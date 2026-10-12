@@ -14,7 +14,30 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      fleet_years: {
+        Row: {
+          closed: boolean
+          closed_at: string | null
+          data: Json
+          updated_at: string
+          year: number
+        }
+        Insert: {
+          closed?: boolean
+          closed_at?: string | null
+          data?: Json
+          updated_at?: string
+          year: number
+        }
+        Update: {
+          closed?: boolean
+          closed_at?: string | null
+          data?: Json
+          updated_at?: string
+          year?: number
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
