@@ -1,10 +1,10 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { ChevronDown, Plus, Trash2, AlertTriangle, X } from "lucide-react";
+import { ChevronDown, Plus, Trash2, AlertTriangle, X, RotateCcw } from "lucide-react";
 import { WheelPicker } from "@/components/WheelPicker";
 import {
-  MONTHS, useFleet, actions, newDevice, latestUpTo, monthStats, cumulative, daysLeft, expiryState, uid,
-  type Device, type MonthEntry,
+  MONTHS, useFleet, actions, newDevice, latestUpTo, monthStats, cumulative, daysLeft, expiryState, uid, lastOdometer,
+  type Device, type Row,
 } from "@/lib/fleet";
 
 export const Route = createFileRoute("/")({
@@ -135,74 +135,115 @@ function AddDialog({ onClose, onAdd }: { onClose: () => void; onAdd: (d: Device)
   );
 }
 
+const cell = "w-full min-w-0 bg-transparent px-0.5 font-mono text-[11px] outline-none text-right";
+
 function Sheet({ dev, month }: { dev: Device; month: number }) {
   const up = (p: Partial<Device>) => actions.update(dev.id, p);
   const latest = latestUpTo(dev, month);
-  const inherited = latest && latest.month !== month;
-  const entry: MonthEntry = latest?.entry ?? { odometer: null, fuelIn: null, fuelUsed: null, note: "" };
-  const setEntry = (p: Partial<MonthEntry>) => {
-    const base = inherited ? { ...entry, fuelIn: null, fuelUsed: null } : entry;
-    actions.setMonth(dev.id, month, { ...base, ...p });
-  };
-  const s = monthStats(dev, month);
+  const inherited = latest != null && latest !== month;
+  const rows = latest != null ? (dev.months[latest] ?? []) : [];
+  const own = dev.months[month] ?? [];
+  const s = monthStats(dev, latest ?? month);
   const c = cumulative(dev, month);
   const allowedToDate = (dev.yearlyAllowed / 12) * (month + 1);
   const u = dev.unit;
 
+  const autoDiff = (r: Row) => (dev.norm > 0 ? Math.round(((u === "km" ? ((r.weightedKm || r.km) * dev.norm) / 100 : r.km * dev.norm) - r.fuel) * 10) / 10 : r.diff);
+  const setRow = (id: string, p: Partial<Row>) => {
+    const list = own.map((r, i) => {
+      if (r.id !== id) return r;
+      const n = { ...r, ...p };
+      if (p.odometer !== undefined) {
+        const prev = i > 0 ? own[i - 1]!.odometer : lastOdometer(dev, month - 1);
+        n.km = Math.max(0, n.odometer - prev);
+      }
+      if (p.diff === undefined) n.diff = autoDiff(n);
+      return n;
+    });
+    actions.setRows(dev.id, month, list);
+  };
+  const addRow = () => {
+    const odo = own.length ? own[own.length - 1]!.odometer : lastOdometer(dev, month - 1);
+    const lastNo = Number(own.at(-1)?.docNo ?? rows.at(-1)?.docNo);
+    actions.setRows(dev.id, month, [...own, { id: uid(), docNo: Number.isFinite(lastNo) ? String(lastNo + 1) : "", odometer: odo, km: 0, weightedKm: 0, fuel: 0, diff: 0 }]);
+  };
+  const resetYear = () => {
+    if (confirm("Új év indítása: MINDEN eszköz havi bejegyzései törlődnek. A nyitó állás az utolsó ismert állás lesz, az eszközök és okmányok megmaradnak. Folytatod?")) actions.resetYear();
+  };
+  const tone = (v: number) => (v > 0 ? "good" : v < 0 ? "bad" : undefined);
+
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-2">
-      <section className="grid grid-cols-6 gap-1.5 rounded-lg border bg-card p-2">
-        <Field className="col-span-3" label="Azonosító" type="text" value={dev.plate} onChange={(v) => up({ plate: v })} />
+    <div className="flex min-h-0 flex-1 flex-col gap-1.5">
+      <section className="grid grid-cols-6 gap-1 rounded-lg border bg-card p-1.5">
+        <Field className="col-span-2" label="Azonosító" type="text" value={dev.plate} onChange={(v) => up({ plate: v })} />
         <Field className="col-span-3" label="Típus" type="text" value={dev.type} onChange={(v) => up({ type: v })} />
-        <Field className="col-span-2" label="Besorolás" type="text" value={dev.category} onChange={(v) => up({ category: v })} />
-        <label className="col-span-2 flex flex-col rounded-md bg-secondary px-2 py-1">
-          <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Mértékegység</span>
+        <Field className="col-span-1" label="Bes." type="text" value={dev.category} onChange={(v) => up({ category: v })} />
+        <label className="col-span-1 flex min-w-0 flex-col rounded-md bg-secondary px-1.5 py-1">
+          <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Egys.</span>
           <select value={u} onChange={(e) => up({ unit: e.target.value as Device["unit"] })} className="bg-transparent font-mono text-sm outline-none">
-            <option value="km">km</option><option value="üó">üzemóra</option>
+            <option value="km">km</option><option value="üó">üó</option>
           </select>
         </label>
-        <Field className="col-span-2" label={u === "km" ? "Norma l/100km" : "Norma l/üó"} value={dev.norm || ""} onChange={(v) => up({ norm: num(v) ?? 0 })} />
-        <Field className="col-span-3" label={`Évi engedélyezett ${u}`} value={dev.yearlyAllowed || ""} onChange={(v) => up({ yearlyAllowed: num(v) ?? 0 })} />
-        <Field className="col-span-3" label={`Nyitó ${u} állás (jan. 1.)`} value={dev.startOdometer || ""} onChange={(v) => up({ startOdometer: num(v) ?? 0 })} />
+        <Field className="col-span-1" label={u === "km" ? "l/100" : "l/üó"} value={dev.norm || ""} onChange={(v) => up({ norm: num(v) ?? 0 })} />
+        <Field className="col-span-2" label={`Évi keret ${u}`} value={dev.yearlyAllowed || ""} onChange={(v) => up({ yearlyAllowed: num(v) ?? 0 })} />
+        <Field className="col-span-2" label={`Nyitó ${u}`} value={dev.startOdometer || ""} onChange={(v) => up({ startOdometer: num(v) ?? 0 })} />
       </section>
 
-      <section className="rounded-lg border bg-card p-2">
+      <section className="flex min-h-0 flex-[1.4] flex-col rounded-lg border bg-card p-1.5">
+        <div className="mb-1 flex items-center gap-2">
+          <h2 className="font-display text-sm font-bold uppercase tracking-wider">{MONTHS[month]}</h2>
+          {inherited && <span className="rounded bg-accent px-1.5 text-[10px] text-muted-foreground">göngyölítve: {MONTHS[latest]}</span>}
+          {latest == null && <span className="text-[10px] text-muted-foreground">nincs bejegyzés</span>}
+          <button onClick={addRow} className="ml-auto flex items-center gap-1 text-xs text-primary"><Plus className="size-3" />Sor</button>
+          <button onClick={resetYear} aria-label="Új év (reset)" className="flex items-center gap-1 rounded border px-1.5 text-[10px] text-muted-foreground"><RotateCcw className="size-3" />Új év</button>
+        </div>
+        <div className="grid grid-cols-[1fr_1.5fr_1fr_1fr_1fr_1fr_14px] gap-x-1 border-b pb-0.5 text-right text-[9px] uppercase text-muted-foreground">
+          <span className="text-left">Okm.sz.</span><span>{u} állás</span><span>Telj.</span><span>Súly.</span><span>Üa. l</span><span>M/T</span><span />
+        </div>
+        <div className="no-scrollbar min-h-0 flex-1 overflow-y-auto">
+          {rows.map((r) => (
+            <div key={r.id} className={`grid grid-cols-[1fr_1.5fr_1fr_1fr_1fr_1fr_14px] items-center gap-x-1 border-b border-border/50 py-0.5 ${inherited ? "opacity-60" : ""}`}>
+              {inherited ? (
+                <>
+                  <span className="truncate font-mono text-[11px]">{r.docNo}</span>
+                  <span className={cell}>{fmt(r.odometer, 1)}</span><span className={cell}>{fmt(r.km, 1)}</span><span className={cell}>{fmt(r.weightedKm)}</span>
+                  <span className={cell}>{fmt(r.fuel, 1)}</span><span className={cell}>{fmt(r.diff, 1)}</span><span />
+                </>
+              ) : (
+                <>
+                  <input value={r.docNo} onChange={(e) => setRow(r.id, { docNo: e.target.value })} className={`${cell} text-left`} />
+                  <input inputMode="decimal" value={r.odometer} onChange={(e) => setRow(r.id, { odometer: num(e.target.value) ?? 0 })} className={cell} />
+                  <input inputMode="decimal" value={r.km} onChange={(e) => setRow(r.id, { km: num(e.target.value) ?? 0 })} className={cell} />
+                  <input inputMode="decimal" value={r.weightedKm} onChange={(e) => setRow(r.id, { weightedKm: num(e.target.value) ?? 0 })} className={cell} />
+                  <input inputMode="decimal" value={r.fuel} onChange={(e) => setRow(r.id, { fuel: num(e.target.value) ?? 0 })} className={cell} />
+                  <input inputMode="decimal" value={r.diff} onChange={(e) => setRow(r.id, { diff: num(e.target.value) ?? 0 })} className={`${cell} ${r.diff > 0 ? "text-success" : r.diff < 0 ? "text-destructive" : ""}`} />
+                  <button aria-label="Sor törlése" onClick={() => actions.setRows(dev.id, month, own.filter((x) => x.id !== r.id))} className="text-muted-foreground"><X className="size-3" /></button>
+                </>
+              )}
+            </div>
+          ))}
+        </div>
+        <div className="mt-1 grid grid-cols-4 gap-1">
+          <Stat label={`Havi ${u}`} value={fmt(s.km, 1)} />
+          <Stat label="Havi üa. l" value={fmt(s.fuel, 1)} />
+          <Stat label={s.diff >= 0 ? "Megtak." : "Túlfogy."} value={fmt(Math.abs(s.diff), 1)} tone={tone(s.diff)} />
+          <Stat label={`Állás`} value={fmt(lastOdometer(dev, month), 1)} />
+        </div>
+      </section>
+
+      <section className="rounded-lg border bg-card p-1.5">
+        <h2 className="mb-1 font-display text-xs font-bold uppercase tracking-wider">Göngyölítve jan.–{MONTHS[month]!.slice(0, 3).toLowerCase()}.</h2>
+        <div className="grid grid-cols-4 gap-1">
+          <Stat label={`Telj. ${u}`} value={fmt(c.km, 1)} tone={dev.yearlyAllowed && c.km > allowedToDate ? "bad" : undefined} />
+          <Stat label={`Keret ${u}`} value={dev.yearlyAllowed ? fmt(allowedToDate) : "—"} />
+          <Stat label="Üzemanyag l" value={fmt(c.fuel, 1)} />
+          <Stat label={c.diff >= 0 ? "Megtak." : "Túlfogy."} value={fmt(Math.abs(c.diff), 1)} tone={tone(c.diff)} />
+        </div>
+      </section>
+
+      <section className="flex min-h-0 flex-1 flex-col rounded-lg border bg-card p-1.5">
         <div className="mb-1 flex items-center justify-between">
-          <h2 className="font-display text-sm font-bold uppercase tracking-wider">{MONTHS[month]} – havi adatok</h2>
-          {inherited && <span className="rounded bg-accent px-1.5 text-[10px] text-muted-foreground">göngyölítve: {MONTHS[latest!.month]}</span>}
-          {!latest && <span className="text-[10px] text-muted-foreground">nincs bejegyzés</span>}
-        </div>
-        <div className="grid grid-cols-3 gap-1.5">
-          <Field label={`${u} állás hó végén`} value={entry.odometer} onChange={(v) => setEntry({ odometer: num(v) })} />
-          <Field label="Tankolt (l)" value={inherited ? "" : entry.fuelIn} onChange={(v) => setEntry({ fuelIn: num(v) })} />
-          <Field label="Tény. fogy. (l)" value={inherited ? "" : entry.fuelUsed} onChange={(v) => setEntry({ fuelUsed: num(v) })} />
-        </div>
-        <div className="mt-1.5 grid grid-cols-4 gap-1.5">
-          <Stat label={`Telj. ${u}`} value={fmt(s.used)} />
-          <Stat label="Norma (l)" value={fmt(s.normFuel, 1)} />
-          <Stat label="Tényl. (l)" value={fmt(s.actual, 1)} />
-          <Stat label={s.diff >= 0 ? "Megtakarítás" : "Túlfogyasztás"} value={fmt(Math.abs(s.diff), 1)} tone={s.diff > 0 ? "good" : s.diff < 0 ? "bad" : undefined} />
-        </div>
-      </section>
-
-      <section className="rounded-lg border bg-card p-2">
-        <h2 className="mb-1 font-display text-sm font-bold uppercase tracking-wider">Göngyölítve jan.–{MONTHS[month]!.slice(0, 3).toLowerCase()}.</h2>
-        <div className="grid grid-cols-4 gap-1.5">
-          <Stat label={`Telj. ${u}`} value={fmt(c.used)} tone={dev.yearlyAllowed && c.used > allowedToDate ? "bad" : undefined} />
-          <Stat label={`Kereten (${u})`} value={dev.yearlyAllowed ? fmt(allowedToDate) : "—"} />
-          <Stat label="Tankolt (l)" value={fmt(c.fuelIn, 1)} />
-          <Stat label={c.diff >= 0 ? "Megtakarítás" : "Túlfogyasztás"} value={fmt(Math.abs(c.diff), 1)} tone={c.diff > 0 ? "good" : c.diff < 0 ? "bad" : undefined} />
-        </div>
-        {dev.yearlyAllowed > 0 && (
-          <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-secondary">
-            <div className={`h-full ${c.used > allowedToDate ? "bg-destructive" : "bg-primary"}`} style={{ width: `${Math.min(100, (c.used / dev.yearlyAllowed) * 100)}%` }} />
-          </div>
-        )}
-      </section>
-
-      <section className="flex min-h-0 flex-1 flex-col rounded-lg border bg-card p-2">
-        <div className="mb-1 flex items-center justify-between">
-          <h2 className="font-display text-sm font-bold uppercase tracking-wider">Okmányok, vizsgák</h2>
+          <h2 className="font-display text-xs font-bold uppercase tracking-wider">Okmányok, vizsgák</h2>
           <button onClick={() => up({ docs: [...dev.docs, { id: uid(), name: "Új okmány", number: "", expiry: "" }] })} className="flex items-center gap-1 text-xs text-primary"><Plus className="size-3" />Okmány</button>
         </div>
         <div className="no-scrollbar flex min-h-0 flex-col gap-1 overflow-y-auto">
@@ -211,7 +252,7 @@ function Sheet({ dev, month }: { dev: Device; month: number }) {
             const st = expiryState(days);
             const setDoc = (p: Partial<typeof doc>) => up({ docs: dev.docs.map((x) => (x.id === doc.id ? { ...x, ...p } : x)) });
             return (
-              <div key={doc.id} className={`grid grid-cols-[1.3fr_1fr_1.25fr_auto] items-center gap-1 rounded-md border-l-4 bg-secondary px-1.5 py-1 ${st === "expired" ? "border-l-destructive" : st === "soon" ? "border-l-warning" : st === "ok" ? "border-l-success" : "border-l-border"}`}>
+              <div key={doc.id} className={`grid grid-cols-[1.3fr_1fr_1.25fr_auto] items-center gap-1 rounded-md border-l-4 bg-secondary px-1.5 py-0.5 ${st === "expired" ? "border-l-destructive" : st === "soon" ? "border-l-warning" : st === "ok" ? "border-l-success" : "border-l-border"}`}>
                 <input value={doc.name} onChange={(e) => setDoc({ name: e.target.value })} className="min-w-0 bg-transparent text-xs font-semibold outline-none" />
                 <input value={doc.number} placeholder="szám" onChange={(e) => setDoc({ number: e.target.value })} className="min-w-0 bg-transparent font-mono text-xs outline-none placeholder:text-muted-foreground" />
                 <div className="min-w-0">

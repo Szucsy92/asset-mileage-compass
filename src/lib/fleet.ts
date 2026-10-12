@@ -1,30 +1,27 @@
 import { useSyncExternalStore } from "react";
+import seedData from "@/data/seed.json";
 
 export const MONTHS = ["Január","Február","Március","Április","Május","Június","Július","Augusztus","Szeptember","Október","November","December"];
 
 export type Doc = { id: string; name: string; number: string; expiry: string };
-export type MonthEntry = {
-  odometer: number | null; // km / üzemóra állás hó végén
-  fuelIn: number | null; // tankolt (l)
-  fuelUsed: number | null; // tényleges fogyasztás (l)
-  note: string;
-};
+/** Egy bejegyzés (menetlevél / okmány sor) */
+export type Row = { id: string; docNo: string; odometer: number; km: number; weightedKm: number; fuel: number; diff: number };
 export type Device = {
   id: string;
   plate: string;
   type: string;
   category: string;
   unit: "km" | "üó";
-  norm: number; // l / 100km vagy l / üó
+  norm: number;
   yearlyAllowed: number;
   startOdometer: number;
   docs: Doc[];
-  months: Record<number, MonthEntry>;
+  months: Record<number, Row[]>;
 };
 type State = { devices: Device[] };
 
-const KEY = "fleet-v1";
-const uid = () => Math.random().toString(36).slice(2, 10);
+const KEY = "fleet-v2";
+export const uid = () => Math.random().toString(36).slice(2, 10);
 
 const defaultDocs = (): Doc[] => [
   { id: uid(), name: "Forgalmi engedély", number: "", expiry: "" },
@@ -36,14 +33,16 @@ export const newDevice = (plate: string, type: string): Device => ({
   id: uid(), plate, type, category: "", unit: "km", norm: 0, yearlyAllowed: 0, startOdometer: 0, docs: defaultDocs(), months: {},
 });
 
+type SeedRow = Omit<Row, "id">;
+type SeedDev = { plate: string; type: string; category: string; unit: string; start: number; months: Record<string, SeedRow[]> };
 const seed = (): State => ({
-  devices: [
-    { ...newDevice("HA 00-157", "Suzuki Vitara"), startOdometer: 52217 },
-    newDevice("HA 02-18", "Opel Astra G"),
-    newDevice("HK 30-34", "VW T4 Mixtó"),
-    newDevice("GSE-121", "VW T4"),
-    newDevice("HB 51-48", "VW T6 Minibusz"),
-  ],
+  devices: (seedData as SeedDev[]).map((s) => ({
+    ...newDevice(s.plate, s.type),
+    category: s.category,
+    unit: s.unit === "üó" ? "üó" : "km",
+    startOdometer: s.start,
+    months: Object.fromEntries(Object.entries(s.months).map(([k, rows]) => [Number(k), rows.map((r) => ({ ...r, id: uid() }))])),
+  })),
 });
 
 let state: State = { devices: [] };
@@ -67,42 +66,49 @@ export function useFleet() {
     () => EMPTY,
   );
 }
+
+export function lastOdometer(d: Device, m = 11) {
+  for (let i = m; i >= 0; i--) {
+    const rows = d.months[i];
+    if (rows?.length) return Math.max(...rows.map((r) => r.odometer));
+  }
+  return d.startOdometer;
+}
+
 export const actions = {
   add(d: Device) { set({ devices: [...state.devices, d] }); },
   remove(id: string) { set({ devices: state.devices.filter((d) => d.id !== id) }); },
   update(id: string, patch: Partial<Device>) {
     set({ devices: state.devices.map((d) => (d.id === id ? { ...d, ...patch } : d)) });
   },
-  setMonth(id: string, m: number, entry: MonthEntry) {
+  setRows(id: string, m: number, rows: Row[]) {
     const d = state.devices.find((x) => x.id === id);
-    if (d) actions.update(id, { months: { ...d.months, [m]: entry } });
+    if (d) actions.update(id, { months: { ...d.months, [m]: rows } });
+  },
+  /** Új év: csak a havi adatok törlődnek, a nyitó állás az utolsó ismert állás lesz */
+  resetYear() {
+    set({ devices: state.devices.map((d) => ({ ...d, startOdometer: lastOdometer(d), months: {} })) });
   },
 };
 
-/** Legutóbbi bejegyzés m hónapig (göngyölítés) */
-export function latestUpTo(d: Device, m: number): { month: number; entry: MonthEntry } | null {
-  for (let i = m; i >= 0; i--) { const e = d.months[i]; if (e) return { month: i, entry: e }; }
+export function latestUpTo(d: Device, m: number): number | null {
+  for (let i = m; i >= 0; i--) if (d.months[i]?.length) return i;
   return null;
 }
-function prevOdo(d: Device, m: number) {
-  for (let i = m - 1; i >= 0; i--) { const o = d.months[i]?.odometer; if (o != null) return o; }
-  return d.startOdometer;
-}
 export function monthStats(d: Device, m: number) {
-  const e = d.months[m];
-  const start = prevOdo(d, m);
-  const used = e?.odometer != null ? Math.max(0, e.odometer - start) : 0;
-  const normFuel = d.unit === "km" ? (used * d.norm) / 100 : used * d.norm;
-  const actual = e?.fuelUsed ?? 0;
-  return { start, used, normFuel, actual, diff: e ? normFuel - actual : 0 };
+  const rows = d.months[m] ?? [];
+  return rows.reduce(
+    (a, r) => ({ km: a.km + r.km, weightedKm: a.weightedKm + r.weightedKm, fuel: a.fuel + r.fuel, diff: a.diff + r.diff }),
+    { km: 0, weightedKm: 0, fuel: 0, diff: 0 },
+  );
 }
 export function cumulative(d: Device, m: number) {
-  let used = 0, normFuel = 0, actual = 0, fuelIn = 0;
+  const t = { km: 0, weightedKm: 0, fuel: 0, diff: 0 };
   for (let i = 0; i <= m; i++) {
     const s = monthStats(d, i);
-    used += s.used; normFuel += s.normFuel; actual += s.actual; fuelIn += d.months[i]?.fuelIn ?? 0;
+    t.km += s.km; t.weightedKm += s.weightedKm; t.fuel += s.fuel; t.diff += s.diff;
   }
-  return { used, normFuel, actual, fuelIn, diff: normFuel - actual };
+  return t;
 }
 export function daysLeft(expiry: string) {
   if (!expiry) return null;
@@ -112,4 +118,3 @@ export function daysLeft(expiry: string) {
 }
 export const expiryState = (days: number | null) =>
   days == null ? "none" : days < 0 ? "expired" : days <= 30 ? "soon" : "ok";
-export { uid };
