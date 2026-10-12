@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from "react";
+import { supabase } from "@/integrations/supabase/client";
 import seedData from "@/data/seed.json";
 
 export const MONTHS = ["Január","Február","Március","Április","Május","Június","Július","Augusztus","Szeptember","Október","November","December"];
@@ -26,7 +27,6 @@ export const uid = () => Math.random().toString(36).slice(2, 10);
 const defaultDocs = (): Doc[] => [
   { id: uid(), name: "Forgalmi engedély", number: "", expiry: "" },
   { id: uid(), name: "Műszaki vizsga", number: "", expiry: "" },
-  { id: uid(), name: "Kötelező biztosítás", number: "", expiry: "" },
 ];
 
 export const newDevice = (plate: string, type: string): Device => ({
@@ -45,26 +45,81 @@ const seed = (): State => ({
   })),
 });
 
-let state: State = { devices: [] };
-let loaded = false;
+export type YearInfo = { year: number; closed: boolean };
+type Store = State & { years: YearInfo[]; year: number | null; closed: boolean; status: "loading" | "ready" | "error" | "saving" };
+
+let store: Store = { devices: [], years: [], year: null, closed: false, status: "loading" };
+let started = false;
+let saveTimer: ReturnType<typeof setTimeout> | undefined;
 const listeners = new Set<() => void>();
-function load() {
-  if (loaded || typeof window === "undefined") return;
-  loaded = true;
-  try { const raw = localStorage.getItem(KEY); state = raw ? JSON.parse(raw) : seed(); } catch { state = seed(); }
+const emit = () => listeners.forEach((l) => l());
+const patchStore = (p: Partial<Store>) => { store = { ...store, ...p }; emit(); };
+
+const clean = (s: State): State => ({
+  devices: s.devices.map((d) => ({ ...d, docs: d.docs.filter((x) => !/biztosítás/i.test(x.name)) })),
+});
+
+async function fetchYears() {
+  const { data, error } = await supabase.from("fleet_years").select("year, closed").order("year");
+  if (error) throw error;
+  return data as YearInfo[];
+}
+export async function openYear(year: number) {
+  patchStore({ status: "loading" });
+  const { data, error } = await supabase.from("fleet_years").select("year, closed, data").eq("year", year).single();
+  if (error) { patchStore({ status: "error" }); return; }
+  patchStore({ year, closed: data.closed, devices: clean(data.data as unknown as State).devices, status: "ready" });
+}
+async function start() {
+  if (started || typeof window === "undefined") return;
+  started = true;
+  try {
+    let years = await fetchYears();
+    if (!years.length) {
+      let initial: State;
+      try { const raw = localStorage.getItem(KEY); initial = raw ? JSON.parse(raw) : seed(); } catch { initial = seed(); }
+      const y = new Date().getFullYear();
+      await supabase.from("fleet_years").insert({ year: y, closed: false, data: clean(initial) as never });
+      years = await fetchYears();
+    }
+    const open = years.filter((y) => !y.closed).at(-1) ?? years.at(-1)!;
+    patchStore({ years });
+    await openYear(open.year);
+  } catch { patchStore({ status: "error" }); }
 }
 function set(next: State) {
-  state = next;
-  localStorage.setItem(KEY, JSON.stringify(state));
-  listeners.forEach((l) => l());
+  if (store.closed || store.year == null) return;
+  patchStore({ devices: next.devices, status: "saving" });
+  clearTimeout(saveTimer);
+  const year = store.year;
+  saveTimer = setTimeout(async () => {
+    const { error } = await supabase.from("fleet_years").update({ data: { devices: store.devices } as never, updated_at: new Date().toISOString() }).eq("year", year);
+    patchStore({ status: error ? "error" : "ready" });
+  }, 600);
 }
-const EMPTY: State = { devices: [] };
+const state = { get devices() { return store.devices; } };
+const EMPTY: Store = { devices: [], years: [], year: null, closed: false, status: "loading" };
 export function useFleet() {
   return useSyncExternalStore(
-    (l) => { load(); listeners.add(l); l(); return () => listeners.delete(l); },
-    () => { load(); return state; },
+    (l) => { listeners.add(l); void start(); return () => listeners.delete(l); },
+    () => store,
     () => EMPTY,
   );
+}
+
+/** Év lezárása: a teljes év mentve és zárolva, új független év indul (eszközök, okmányok, nyitó állás átvéve) */
+export async function closeYear() {
+  if (store.year == null || store.closed) return;
+  clearTimeout(saveTimer);
+  const y = store.year;
+  const devices = store.devices;
+  const { error } = await supabase.from("fleet_years").update({ data: { devices } as never, closed: true, closed_at: new Date().toISOString() }).eq("year", y);
+  if (error) { patchStore({ status: "error" }); return; }
+  const next: State = { devices: devices.map((d) => ({ ...d, startOdometer: lastOdometer(d), months: {} })) };
+  const { error: e2 } = await supabase.from("fleet_years").insert({ year: y + 1, closed: false, data: next as never });
+  if (e2) { patchStore({ status: "error" }); return; }
+  patchStore({ years: await fetchYears() });
+  await openYear(y + 1);
 }
 
 export function lastOdometer(d: Device, m = 11) {
@@ -84,10 +139,6 @@ export const actions = {
   setRows(id: string, m: number, rows: Row[]) {
     const d = state.devices.find((x) => x.id === id);
     if (d) actions.update(id, { months: { ...d.months, [m]: rows } });
-  },
-  /** Új év: csak a havi adatok törlődnek, a nyitó állás az utolsó ismert állás lesz */
-  resetYear() {
-    set({ devices: state.devices.map((d) => ({ ...d, startOdometer: lastOdometer(d), months: {} })) });
   },
 };
 
