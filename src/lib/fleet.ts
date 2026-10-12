@@ -81,11 +81,11 @@ export const actions = {
 
 /** Legutóbbi bejegyzés m hónapig (göngyölítés) */
 export function latestUpTo(d: Device, m: number): { month: number; entry: MonthEntry } | null {
-  for (let i = m; i >= 0; i--) if (d.months[i]) return { month: i, entry: d.months[i] };
+  for (let i = m; i >= 0; i--) { const e = d.months[i]; if (e) return { month: i, entry: e }; }
   return null;
 }
 function prevOdo(d: Device, m: number) {
-  for (let i = m - 1; i >= 0; i--) if (d.months[i]?.odometer != null) return d.months[i].odometer!;
+  for (let i = m - 1; i >= 0; i--) { const o = d.months[i]?.odometer; if (o != null) return o; }
   return d.startOdometer;
 }
 export function monthStats(d: Device, m: number) {

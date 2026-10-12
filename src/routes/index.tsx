@@ -41,7 +41,7 @@ function Field({ label, value, onChange, type = "number", className = "" }: {
   );
 }
 
-function Stat({ label, value, tone }: { label: string; value: string; tone?: "good" | "bad" }) {
+function Stat({ label, value, tone }: { label: string; value: string; tone?: "good" | "bad" | undefined }) {
   return (
     <div className="rounded-md border bg-card px-2 py-1">
       <div className="truncate text-[10px] uppercase tracking-wider text-muted-foreground">{label}</div>
@@ -59,7 +59,7 @@ function Index() {
 
   useEffect(() => { setMonth(new Date().getMonth()); }, []);
   useEffect(() => {
-    if (devices.length && !devices.find((d) => d.id === devId)) setDevId(devices[0].id);
+    if (devices.length && !devices.find((d) => d.id === devId)) setDevId(devices[0]!.id);
   }, [devices, devId]);
 
   const dev = devices.find((d) => d.id === devId);
@@ -109,7 +109,7 @@ function Index() {
 
       {picker === "dev" && devices.length > 0 && (
         <WheelPicker items={devices.map((d) => `${d.plate} · ${d.type}`)} value={devIndex}
-          onSelect={(i) => { setDevId(devices[i].id); setPicker(null); }} onClose={() => setPicker(null)} />
+          onSelect={(i) => { setDevId(devices[i]!.id); setPicker(null); }} onClose={() => setPicker(null)} />
       )}
       {picker === "month" && (
         <WheelPicker items={MONTHS} value={month} onSelect={(i) => { setMonth(i); setPicker(null); }} onClose={() => setPicker(null)} />
@@ -186,7 +186,7 @@ function Sheet({ dev, month }: { dev: Device; month: number }) {
       </section>
 
       <section className="rounded-lg border bg-card p-2">
-        <h2 className="mb-1 font-display text-sm font-bold uppercase tracking-wider">Göngyölítve jan.–{MONTHS[month].slice(0, 3).toLowerCase()}.</h2>
+        <h2 className="mb-1 font-display text-sm font-bold uppercase tracking-wider">Göngyölítve jan.–{MONTHS[month]!.slice(0, 3).toLowerCase()}.</h2>
         <div className="grid grid-cols-4 gap-1.5">
           <Stat label={`Telj. ${u}`} value={fmt(c.used)} tone={dev.yearlyAllowed && c.used > allowedToDate ? "bad" : undefined} />
           <Stat label={`Kereten (${u})`} value={dev.yearlyAllowed ? fmt(allowedToDate) : "—"} />
