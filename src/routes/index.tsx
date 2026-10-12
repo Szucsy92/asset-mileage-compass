@@ -1,9 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { ChevronDown, Plus, Trash2, AlertTriangle, X, RotateCcw } from "lucide-react";
+import { ChevronDown, Plus, Trash2, AlertTriangle, X, Lock, CalendarPlus } from "lucide-react";
 import { WheelPicker } from "@/components/WheelPicker";
 import {
-  MONTHS, useFleet, actions, newDevice, latestUpTo, monthStats, cumulative, daysLeft, expiryState, uid, lastOdometer,
+  MONTHS, useFleet, actions, newDevice, latestUpTo, monthStats, cumulative, daysLeft, expiryState, uid, lastOdometer, openYear, closeYear,
   type Device, type Row,
 } from "@/lib/fleet";
 
@@ -51,7 +51,7 @@ function Stat({ label, value, tone }: { label: string; value: string; tone?: "go
 }
 
 function Index() {
-  const { devices } = useFleet();
+  const { devices, years, year, closed, status } = useFleet();
   const [devId, setDevId] = useState<string | null>(null);
   const [month, setMonth] = useState(0);
   const [picker, setPicker] = useState<"dev" | "month" | null>(null);
@@ -71,6 +71,22 @@ function Index() {
 
   return (
     <main className="mx-auto flex h-dvh max-w-xl flex-col gap-2 overflow-hidden p-2">
+      <div className="flex items-center gap-1.5 text-xs">
+        <div className="no-scrollbar flex gap-1 overflow-x-auto">
+          {years.map((y) => (
+            <button key={y.year} onClick={() => openYear(y.year)} className={`flex items-center gap-1 rounded-md border px-2 py-0.5 font-mono ${y.year === year ? "border-primary bg-primary/15 text-primary" : "text-muted-foreground"}`}>
+              {y.closed && <Lock className="size-3" />}{y.year}
+            </button>
+          ))}
+        </div>
+        <span className={`ml-auto text-[10px] ${status === "error" ? "text-destructive" : "text-muted-foreground"}`}>
+          {status === "loading" ? "betöltés…" : status === "saving" ? "mentés…" : status === "error" ? "hiba – nincs mentve" : closed ? "lezárt év – csak olvasható" : "mentve"}
+        </span>
+        {!closed && year != null && (
+          <button onClick={() => { if (confirm(`${year} lezárása: az összes eszköz teljes éve elmentésre és zárolásra kerül (később visszanézhető), majd független ${year + 1}. év indul üres hónapokkal. Az eszközök, okmányok és a nyitó állás átkerülnek. Folytatod?`)) void closeYear(); }}
+            className="flex items-center gap-1 rounded-md bg-primary px-2 py-0.5 font-semibold text-primary-foreground"><CalendarPlus className="size-3" />Új év</button>
+        )}
+      </div>
       <div className="grid grid-cols-[1fr_auto] gap-2">
         <div className="grid grid-cols-2 gap-2">
           <button onClick={() => setPicker("dev")} className="flex min-w-0 items-center justify-between gap-1 rounded-lg border bg-card px-3 py-2 text-left">
@@ -89,8 +105,8 @@ function Index() {
           </button>
         </div>
         <div className="flex flex-col gap-1">
-          <button aria-label="Új eszköz" onClick={() => setAdding(true)} className="flex flex-1 items-center justify-center rounded-md bg-primary px-2 text-primary-foreground"><Plus className="size-4" /></button>
-          <button aria-label="Eszköz törlése" disabled={!dev} onClick={() => dev && confirm(`Törlöd: ${dev.plate}?`) && actions.remove(dev.id)} className="flex flex-1 items-center justify-center rounded-md border px-2 text-destructive"><Trash2 className="size-4" /></button>
+          <button aria-label="Új eszköz" disabled={closed} onClick={() => setAdding(true)} className="flex flex-1 items-center justify-center rounded-md bg-primary px-2 text-primary-foreground"><Plus className="size-4" /></button>
+          <button aria-label="Eszköz törlése" disabled={!dev || closed} onClick={() => dev && confirm(`Törlöd: ${dev.plate}?`) && actions.remove(dev.id)} className="flex flex-1 items-center justify-center rounded-md border px-2 text-destructive"><Trash2 className="size-4" /></button>
         </div>
       </div>
 
@@ -105,7 +121,7 @@ function Index() {
         </div>
       )}
 
-      {dev ? <Sheet dev={dev} month={month} /> : <p className="p-6 text-center text-muted-foreground">Nincs eszköz. Adj hozzá egyet a + gombbal.</p>}
+      {dev ? <fieldset disabled={closed} className="flex min-h-0 flex-1 flex-col"><Sheet dev={dev} month={month} /></fieldset> : <p className="p-6 text-center text-muted-foreground">{status === "loading" ? "Betöltés…" : "Nincs eszköz."}</p>}
 
       {picker === "dev" && devices.length > 0 && (
         <WheelPicker items={devices.map((d) => `${d.plate} · ${d.type}`)} value={devIndex}
@@ -167,9 +183,6 @@ function Sheet({ dev, month }: { dev: Device; month: number }) {
     const lastNo = Number(own.at(-1)?.docNo ?? rows.at(-1)?.docNo);
     actions.setRows(dev.id, month, [...own, { id: uid(), docNo: Number.isFinite(lastNo) ? String(lastNo + 1) : "", odometer: odo, km: 0, weightedKm: 0, fuel: 0, diff: 0 }]);
   };
-  const resetYear = () => {
-    if (confirm("Új év indítása: MINDEN eszköz havi bejegyzései törlődnek. A nyitó állás az utolsó ismert állás lesz, az eszközök és okmányok megmaradnak. Folytatod?")) actions.resetYear();
-  };
   const tone = (v: number) => (v > 0 ? "good" : v < 0 ? "bad" : undefined);
 
   return (
@@ -195,7 +208,6 @@ function Sheet({ dev, month }: { dev: Device; month: number }) {
           {inherited && <span className="rounded bg-accent px-1.5 text-[10px] text-muted-foreground">göngyölítve: {MONTHS[latest]}</span>}
           {latest == null && <span className="text-[10px] text-muted-foreground">nincs bejegyzés</span>}
           <button onClick={addRow} className="ml-auto flex items-center gap-1 text-xs text-primary"><Plus className="size-3" />Sor</button>
-          <button onClick={resetYear} aria-label="Új év (reset)" className="flex items-center gap-1 rounded border px-1.5 text-[10px] text-muted-foreground"><RotateCcw className="size-3" />Új év</button>
         </div>
         <div className="grid grid-cols-[1fr_1.5fr_1fr_1fr_1fr_1fr_14px] gap-x-1 border-b pb-0.5 text-right text-[9px] uppercase text-muted-foreground">
           <span className="text-left">Okm.sz.</span><span>{u} állás</span><span>Telj.</span><span>Súly.</span><span>Üa. l</span><span>M/T</span><span />
