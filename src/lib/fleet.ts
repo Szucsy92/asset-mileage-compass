@@ -131,6 +131,7 @@ export function lastOdometer(d: Device, m = 11) {
 }
 
 export const actions = {
+  replaceAll(devices: Device[]) { set({ devices }); },
   add(d: Device) { set({ devices: [...state.devices, d] }); },
   remove(id: string) { set({ devices: state.devices.filter((d) => d.id !== id) }); },
   update(id: string, patch: Partial<Device>) {

@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { ChevronDown, Plus, Trash2, AlertTriangle, X, Lock, CalendarPlus } from "lucide-react";
+import { ChevronDown, Plus, Trash2, AlertTriangle, X, Lock, CalendarPlus, Upload } from "lucide-react";
 import { WheelPicker } from "@/components/WheelPicker";
 import {
   MONTHS, useFleet, actions, newDevice, latestUpTo, monthStats, cumulative, daysLeft, expiryState, uid, lastOdometer, openYear, closeYear,
@@ -83,6 +83,24 @@ function Index() {
           {status === "loading" ? "betöltés…" : status === "saving" ? "mentés…" : status === "error" ? "hiba – nincs mentve" : closed ? "lezárt év – csak olvasható" : "mentve"}
         </span>
         {!closed && year != null && (
+          <label className="flex cursor-pointer items-center gap-1 rounded-md border px-2 py-0.5 text-muted-foreground">
+            <Upload className="size-3" />Excel
+            <input type="file" accept=".xlsx,.xls,.xlsm" className="hidden" onChange={async (e) => {
+              const f = e.target.files?.[0]; e.target.value = "";
+              if (!f) return;
+              try {
+                const { parseWorkbook, mergeImport } = await import("@/lib/importXlsx");
+                const parsed = await parseWorkbook(f);
+                if (!parsed.length) { alert("A fájlban nem találtam eszközt (Forgalmi rendszám blokkokat)."); return; }
+                if (!confirm(`${parsed.length} eszközt találtam. Az összes eszköz összes hónapja frissül a fájlból a ${year}. évben (okmányok, beállítások megmaradnak). Folytatod?`)) return;
+                const r = mergeImport(devices, parsed);
+                actions.replaceAll(r.devices);
+                alert(`Kész: ${r.updated} eszköz frissítve, ${r.added} új eszköz hozzáadva.`);
+              } catch { alert("A fájl beolvasása nem sikerült."); }
+            }} />
+          </label>
+        )}
+        {!closed && year != null && (
           <button onClick={() => { if (confirm(`${year} lezárása: az összes eszköz teljes éve elmentésre és zárolásra kerül (később visszanézhető), majd független ${year + 1}. év indul üres hónapokkal. Az eszközök, okmányok és a nyitó állás átkerülnek. Folytatod?`)) void closeYear(); }}
             className="flex items-center gap-1 rounded-md bg-primary px-2 py-0.5 font-semibold text-primary-foreground"><CalendarPlus className="size-3" />Új év</button>
         )}
@@ -124,7 +142,7 @@ function Index() {
       {dev ? <fieldset disabled={closed} className="flex min-h-0 flex-1 flex-col"><Sheet dev={dev} month={month} /></fieldset> : <p className="p-6 text-center text-muted-foreground">{status === "loading" ? "Betöltés…" : "Nincs eszköz."}</p>}
 
       {picker === "dev" && devices.length > 0 && (
-        <WheelPicker items={devices.map((d) => `${d.plate} · ${d.type}`)} value={devIndex}
+        <WheelPicker searchable items={devices.map((d) => `${d.plate} · ${d.type}`)} value={devIndex}
           onSelect={(i) => { setDevId(devices[i]!.id); setPicker(null); }} onClose={() => setPicker(null)} />
       )}
       {picker === "month" && (
