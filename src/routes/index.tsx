@@ -10,9 +10,9 @@ import {
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "Eszköznyilvántartás – km, üzemanyag, okmányok" },
+      { title: "Technikaieszköz_nyilvántartás" },
       { name: "description", content: "Technikai eszközök havi göngyölített km/üzemóra, üzemanyag és okmány-lejárat nyilvántartása." },
-      { property: "og:title", content: "Eszköznyilvántartás" },
+      { property: "og:title", content: "Technikaieszköz_nyilvántartás" },
       { property: "og:description", content: "Havi km, üzemanyag, túlfogyasztás és okmány-lejárat figyelés." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
@@ -59,7 +59,11 @@ function Index() {
 
   useEffect(() => { setMonth(new Date().getMonth()); }, []);
   useEffect(() => {
-    if (devices.length && !devices.find((d) => d.id === devId)) setDevId(devices[0]!.id);
+    if (devices.length && !devices.find((d) => d.id === devId)) {
+      setDevId(devices[0]!.id);
+      const lm = latestUpTo(devices[0]!, 11);
+      if (lm != null) setMonth(lm);
+    }
   }, [devices, devId]);
 
   const dev = devices.find((d) => d.id === devId);
@@ -67,7 +71,7 @@ function Index() {
 
   const alerts = devices.flatMap((d) =>
     d.docs.map((doc) => ({ d, doc, days: daysLeft(doc.expiry) })).filter((x) => x.days != null && x.days <= 30),
-  );
+  ).sort((a, b) => a.days! - b.days!);
 
   return (
     <main className="mx-auto flex h-dvh max-w-xl flex-col gap-2 overflow-hidden p-2">
@@ -128,22 +132,12 @@ function Index() {
         </div>
       </div>
 
-      {alerts.length > 0 && (
-        <div className="flex items-center gap-2 overflow-x-auto no-scrollbar rounded-md border border-warning/50 bg-warning/10 px-2 py-1 text-xs">
-          <AlertTriangle className="size-4 shrink-0 text-warning" />
-          {alerts.map(({ d, doc, days }) => (
-            <button key={doc.id} onClick={() => setDevId(d.id)} className={`whitespace-nowrap ${days! < 0 ? "text-destructive" : "text-warning"}`}>
-              {d.plate}: {doc.name} {days! < 0 ? `lejárt (${-days!} n.)` : `${days} nap`}
-            </button>
-          ))}
-        </div>
-      )}
-
       {dev ? <fieldset disabled={closed} className="flex min-h-0 flex-1 flex-col"><Sheet dev={dev} month={month} /></fieldset> : <p className="p-6 text-center text-muted-foreground">{status === "loading" ? "Betöltés…" : "Nincs eszköz."}</p>}
+      <ExpiryBar alerts={alerts} onPick={(id) => setDevId(id)} />
 
       {picker === "dev" && devices.length > 0 && (
         <WheelPicker searchable items={devices.map((d) => `${d.plate} · ${d.type}`)} value={devIndex}
-          onSelect={(i) => { setDevId(devices[i]!.id); setPicker(null); }} onClose={() => setPicker(null)} />
+          onSelect={(i) => { const d = devices[i]!; setDevId(d.id); const lm = latestUpTo(d, 11); if (lm != null) setMonth(lm); setPicker(null); }} onReorder={closed ? undefined : (a, b) => actions.move(a, b)} onClose={() => setPicker(null)} />
       )}
       {picker === "month" && (
         <WheelPicker items={MONTHS} value={month} onSelect={(i) => { setMonth(i); setPicker(null); }} onClose={() => setPicker(null)} />
@@ -276,6 +270,7 @@ function Sheet({ dev, month }: { dev: Device; month: number }) {
           <h2 className="font-display text-xs font-bold uppercase tracking-wider">Okmányok, vizsgák</h2>
           <button onClick={() => up({ docs: [...dev.docs, { id: uid(), name: "Új okmány", number: "", expiry: "" }] })} className="flex items-center gap-1 text-xs text-primary"><Plus className="size-3" />Okmány</button>
         </div>
+        <StatusRow dev={dev} />
         <div className="no-scrollbar flex min-h-0 flex-col gap-1 overflow-y-auto">
           {dev.docs.map((doc) => {
             const days = daysLeft(doc.expiry);
@@ -295,6 +290,80 @@ function Sheet({ dev, month }: { dev: Device; month: number }) {
           })}
         </div>
       </section>
+    </div>
+  );
+}
+
+const STATUS = [
+  { k: "H", label: "Hadrafogható", cls: "bg-success text-primary-foreground" },
+  { k: "NH", label: "Nem hadrafogható", cls: "bg-warning text-primary-foreground" },
+  { k: "S", label: "Selejt", cls: "bg-destructive text-destructive-foreground" },
+] as const;
+
+function StatusRow({ dev }: { dev: Device }) {
+  const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const note = dev.note ?? "";
+  return (
+    <div className="mb-1 flex items-center gap-1">
+      <div className="flex shrink-0 overflow-hidden rounded-md border">
+        {STATUS.map((s) => (
+          <button key={s.k} title={s.label} onClick={() => actions.update(dev.id, { status: s.k })}
+            className={`px-2 py-1 font-mono text-xs font-bold ${dev.status === s.k ? s.cls : "text-muted-foreground"}`}>{s.k}</button>
+        ))}
+      </div>
+      {editing ? (
+        <input autoFocus value={note} onBlur={() => setEditing(false)} onChange={(e) => actions.update(dev.id, { note: e.target.value })}
+          placeholder="Megjegyzés (állapot, hely…)" className="min-w-0 flex-1 rounded-md bg-secondary px-2 py-1 text-xs outline-none" />
+      ) : (
+        <button onClick={() => (note.length > 30 ? setOpen(true) : setEditing(true))}
+          className={`min-w-0 flex-1 truncate rounded-md bg-secondary px-2 py-1 text-left text-xs ${note ? "" : "text-muted-foreground"}`}>
+          {note || "Megjegyzés (állapot, hely…)"}
+        </button>
+      )}
+      {open && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/70 p-4 backdrop-blur-sm animate-in fade-in" onClick={() => setOpen(false)}>
+          <div className="flex max-h-[70dvh] w-full max-w-sm flex-col gap-2 rounded-xl border bg-popover p-3 animate-in zoom-in-95" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <span className="font-display text-sm font-bold uppercase tracking-wider">{dev.plate} – megjegyzés</span>
+              <button aria-label="Bezárás" onClick={() => setOpen(false)}><X className="size-4" /></button>
+            </div>
+            <textarea value={note} onChange={(e) => actions.update(dev.id, { note: e.target.value })}
+              className="min-h-40 flex-1 resize-none rounded-md bg-secondary p-2 text-sm outline-none" />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+type Alert = { d: Device; doc: { id: string; name: string; expiry: string }; days: number | null };
+function ExpiryBar({ alerts, onPick }: { alerts: Alert[]; onPick: (id: string) => void }) {
+  const [open, setOpen] = useState(false);
+  if (!alerts.length) return null;
+  const first = alerts[0]!;
+  const line = (a: Alert) => (
+    <>
+      <span className="font-mono font-bold">{a.d.plate}</span> · {a.doc.name} ·{" "}
+      <span className="font-mono">{a.doc.expiry.replaceAll("-", ".")}.</span>{" "}
+      ({a.days! < 0 ? `lejárt ${-a.days!} napja` : a.days === 0 ? "ma jár le" : `${a.days} nap`})
+    </>
+  );
+  return (
+    <div className="shrink-0 overflow-hidden rounded-lg border border-destructive bg-destructive/15 text-xs text-destructive">
+      <button onClick={() => setOpen(!open)} className="flex w-full items-center gap-2 px-2 py-1.5 text-left">
+        <AlertTriangle className="size-4 shrink-0" />
+        <span className="min-w-0 flex-1 truncate">{line(first)}</span>
+        {alerts.length > 1 && <span className="rounded bg-destructive px-1.5 font-bold text-destructive-foreground">+{alerts.length - 1}</span>}
+        <ChevronDown className={`size-4 shrink-0 transition-transform ${open ? "rotate-180" : ""}`} />
+      </button>
+      {open && (
+        <div className="no-scrollbar max-h-36 overflow-y-auto border-t border-destructive/40 animate-in slide-in-from-top-2">
+          {alerts.map((a) => (
+            <button key={a.doc.id} onClick={() => { onPick(a.d.id); setOpen(false); }} className="block w-full truncate px-2 py-1 text-left odd:bg-destructive/10">{line(a)}</button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
