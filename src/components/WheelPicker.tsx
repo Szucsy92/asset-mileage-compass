@@ -113,7 +113,7 @@ export function WheelPicker({
                   onPointerDown={(e) => startPress(i, e.clientY)}
                   onContextMenu={(e) => canReorder && e.preventDefault()}
                   onClick={() => { if (justDragged.current) { justDragged.current = false; return; } onSelect(it.idx); }}
-                  className={`flex w-full snap-center select-none items-center justify-center truncate px-3 font-display text-lg font-semibold tracking-wide ${isDrag ? "relative z-10 rounded-md bg-primary text-primary-foreground shadow-xl" : "transition-transform"}`}
+                  className={`flex w-full snap-center select-none items-center justify-center truncate px-3 font-display text-lg font-semibold tracking-wide ${isDrag ? "relative z-10 rounded-md bg-primary text-primary-foreground shadow-xl" : drag ? "transition-transform" : ""}`}
                   style={{
                     height: ITEM,
                     transform: isDrag ? `translateY(${drag!.dy}px) scale(1.05)` : `translateY(${shift}px) rotateX(${-angle}deg)`,
