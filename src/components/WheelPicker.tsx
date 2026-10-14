@@ -109,7 +109,7 @@ export function WheelPicker({
               const shift = drag && !isDrag ? (i > drag.pos && i <= target ? -ITEM : i < drag.pos && i >= target ? ITEM : 0) : 0;
               return (
                 <button
-                  key={it.idx}
+                  key={it.label}
                   onPointerDown={(e) => startPress(i, e.clientY)}
                   onContextMenu={(e) => canReorder && e.preventDefault()}
                   onClick={() => { if (justDragged.current) { justDragged.current = false; return; } onSelect(it.idx); }}
