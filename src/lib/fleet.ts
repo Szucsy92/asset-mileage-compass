@@ -17,6 +17,8 @@ export type Device = {
   yearlyAllowed: number;
   startOdometer: number;
   docs: Doc[];
+  status?: "H" | "NH" | "S";
+  note?: string;
   months: Record<number, Row[]>;
 };
 type State = { devices: Device[] };
@@ -132,6 +134,11 @@ export function lastOdometer(d: Device, m = 11) {
 
 export const actions = {
   replaceAll(devices: Device[]) { set({ devices }); },
+  move(from: number, to: number) {
+    const list = [...state.devices];
+    const [it] = list.splice(from, 1);
+    if (it) { list.splice(to, 0, it); set({ devices: list }); }
+  },
   add(d: Device) { set({ devices: [...state.devices, d] }); },
   remove(id: string) { set({ devices: state.devices.filter((d) => d.id !== id) }); },
   update(id: string, patch: Partial<Device>) {
