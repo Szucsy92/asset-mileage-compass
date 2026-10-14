@@ -10,9 +10,9 @@ import {
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "Eszköznyilvántartás – km, üzemanyag, okmányok" },
+      { title: "Technikaieszköz_nyilvántartás" },
       { name: "description", content: "Technikai eszközök havi göngyölített km/üzemóra, üzemanyag és okmány-lejárat nyilvántartása." },
-      { property: "og:title", content: "Eszköznyilvántartás" },
+      { property: "og:title", content: "Technikaieszköz_nyilvántartás" },
       { property: "og:description", content: "Havi km, üzemanyag, túlfogyasztás és okmány-lejárat figyelés." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
