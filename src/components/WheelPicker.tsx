@@ -60,11 +60,11 @@ export function WheelPicker({
     const tick = (t: number) => {
       const el = ref.current;
       if (el) {
-        const r = el.getBoundingClientRect(), zone = r.height * 0.22, y = pointerY.current;
+        const r = el.getBoundingClientRect(), zone = r.height * 0.12, y = pointerY.current;
         const depth = y < r.top + zone ? -(r.top + zone - y) / zone : y > r.bottom - zone ? (y - (r.bottom - zone)) / zone : 0;
         if (depth) {
-          const accel = Math.min(4, 1 + (t - t0) / 600);
-          el.scrollTop += Math.sign(depth) * Math.min(1.5, Math.abs(depth)) * 9 * accel;
+          const accel = Math.min(2, 1 + (t - t0) / 3000);
+          el.scrollTop += Math.sign(depth) * Math.min(1, Math.abs(depth)) * 1.6 * accel;
           setScroll(el.scrollTop);
         } else t0 = t;
       }
@@ -78,7 +78,7 @@ export function WheelPicker({
   const target = drag ? Math.max(0, Math.min(list.length - 1, drag.pos + Math.round(rel / ITEM))) : -1;
   const startPress = (pos: number, y: number) => {
     if (!canReorder || query) return;
-    press.current = { y, t: setTimeout(() => { setDrag({ pos, y0: y, dy: 0, s0: ref.current?.scrollTop ?? 0 }); navigator.vibrate?.(30); }, 450) };
+    press.current = { y, t: setTimeout(() => { setDrag({ pos, y0: y, dy: 0, s0: ref.current?.scrollTop ?? 0 }); }, 450) };
   };
   const movePress = (y: number) => {
     pointerY.current = y;
@@ -120,31 +120,26 @@ export function WheelPicker({
             onPointerMove={(e) => movePress(e.clientY)}
             onPointerUp={endPress}
             onPointerCancel={endPress}
-            className={`no-scrollbar wheel-mask relative snap-y snap-mandatory ${drag ? "overflow-hidden touch-none" : "overflow-y-scroll"}`}
-            style={{ height: `min(${ITEM * VIS}px, calc(100dvh - 9rem))`, perspective: 700, WebkitOverflowScrolling: "touch", overscrollBehavior: "contain" }}
+            className={`no-scrollbar wheel-mask relative ${drag ? "overflow-hidden touch-none" : "overflow-y-scroll"}`}
+            style={{ height: `min(${ITEM * VIS}px, calc(100dvh - 9rem))`, WebkitOverflowScrolling: "touch", overscrollBehavior: "contain" }}
           >
             <div style={{ height: ITEM * PAD }} />
             {list.length === 0 && <div className="py-2 text-center text-sm text-muted-foreground">Nincs találat</div>}
             {list.map((it, i) => {
               const offset = (i * ITEM - scroll) / ITEM;
-              const angle = drag ? 0 : Math.max(-88, Math.min(88, offset * 18));
-              const R = 130;
               const isDrag = drag?.pos === i;
               const shift = drag && !isDrag ? (i > drag.pos && i <= target ? -ITEM : i < drag.pos && i >= target ? ITEM : 0) : 0;
-              const cyl = drag ? "" : `translateZ(${-R}px) rotateX(${-angle}deg) translateZ(${R}px)`;
               return (
                 <button
                   key={it.label}
                   onPointerDown={(e) => startPress(i, e.clientY)}
                   onContextMenu={(e) => canReorder && e.preventDefault()}
                   onClick={() => { if (justDragged.current) { justDragged.current = false; return; } onSelect(it.idx); }}
-                  className={`flex w-full snap-center select-none items-center justify-center truncate px-3 font-display text-lg font-semibold tracking-wide ${isDrag ? "relative z-10 rounded-md bg-primary text-primary-foreground shadow-xl" : drag ? "transition-transform" : ""}`}
+                  className={`flex w-full select-none items-center justify-center truncate px-3 font-display text-lg font-semibold tracking-wide ${isDrag ? "relative z-10 rounded-md bg-primary text-primary-foreground shadow-xl ring-2 ring-accent" : drag ? "transition-transform duration-150" : ""}`}
                   style={{
                     height: ITEM,
-                    transform: isDrag ? `translateY(${rel}px) scale(1.05)` : `translateY(${shift}px) ${cyl}`,
-                    backfaceVisibility: "hidden",
-                    opacity: drag ? 1 : Math.max(0.15, Math.cos((angle * Math.PI) / 180)),
-                    filter: drag || Math.abs(offset) < 1.5 ? undefined : `blur(${Math.min(1.5, (Math.abs(offset) - 1.5) * 0.4)}px)`,
+                    transform: isDrag ? `translateY(${rel}px) scale(1.04)` : shift ? `translateY(${shift}px)` : undefined,
+                    opacity: drag ? 1 : Math.max(0.3, 1 - Math.abs(offset) * 0.15),
                     color: isDrag ? undefined : !drag && Math.abs(offset) < 0.5 ? "var(--primary)" : undefined,
                     WebkitTouchCallout: "none",
                   }}
