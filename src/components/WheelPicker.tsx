@@ -24,7 +24,9 @@ function score(item: string, q: string) {
 export function WheelPicker({
   items, value, onSelect, onClose, searchable = false, onReorder,
 }: { items: string[]; value: number; onSelect: (i: number) => void; onClose: () => void; searchable?: boolean; onReorder?: ((from: number, to: number) => void) | undefined }) {
-  const [drag, setDrag] = useState<{ pos: number; y0: number; dy: number } | null>(null);
+  const [drag, setDrag] = useState<{ pos: number; y0: number; dy: number; s0: number } | null>(null);
+  const pointerY = useRef(0);
+  const VIS = 9, PAD = 4;
   const press = useRef<{ t: ReturnType<typeof setTimeout>; y: number } | null>(null);
   const justDragged = useRef(false);
   const canReorder = !!onReorder;
@@ -52,12 +54,34 @@ export function WheelPicker({
     return () => el?.removeEventListener("touchmove", block);
   }, [!!drag]);
 
-  const target = drag ? Math.max(0, Math.min(list.length - 1, drag.pos + Math.round(drag.dy / ITEM))) : -1;
+  useEffect(() => {
+    if (!drag) return;
+    let raf = 0, t0 = performance.now();
+    const tick = (t: number) => {
+      const el = ref.current;
+      if (el) {
+        const r = el.getBoundingClientRect(), zone = r.height * 0.22, y = pointerY.current;
+        const depth = y < r.top + zone ? -(r.top + zone - y) / zone : y > r.bottom - zone ? (y - (r.bottom - zone)) / zone : 0;
+        if (depth) {
+          const accel = Math.min(4, 1 + (t - t0) / 600);
+          el.scrollTop += Math.sign(depth) * Math.min(1.5, Math.abs(depth)) * 9 * accel;
+          setScroll(el.scrollTop);
+        } else t0 = t;
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [!!drag]);
+
+  const rel = drag ? drag.dy + scroll - drag.s0 : 0;
+  const target = drag ? Math.max(0, Math.min(list.length - 1, drag.pos + Math.round(rel / ITEM))) : -1;
   const startPress = (pos: number, y: number) => {
     if (!canReorder || query) return;
-    press.current = { y, t: setTimeout(() => { setDrag({ pos, y0: y, dy: 0 }); navigator.vibrate?.(30); }, 450) };
+    press.current = { y, t: setTimeout(() => { setDrag({ pos, y0: y, dy: 0, s0: ref.current?.scrollTop ?? 0 }); navigator.vibrate?.(30); }, 450) };
   };
   const movePress = (y: number) => {
+    pointerY.current = y;
     if (drag) { setDrag({ ...drag, dy: y - drag.y0 }); return; }
     if (press.current && Math.abs(y - press.current.y) > 8) { clearTimeout(press.current.t); press.current = null; }
   };
@@ -72,8 +96,8 @@ export function WheelPicker({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center bg-background/70 pt-20 backdrop-blur-sm animate-in fade-in" onClick={onClose}>
-      <div className="relative w-80 rounded-xl border bg-popover p-2 shadow-2xl animate-in zoom-in-95 slide-in-from-top-4" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 flex items-start justify-center bg-background/70 pt-10 backdrop-blur-sm animate-in fade-in" onClick={onClose}>
+      <div className="relative w-[min(92vw,26rem)] rounded-xl border bg-popover p-2 shadow-2xl animate-in zoom-in-95 slide-in-from-top-4" onClick={(e) => e.stopPropagation()}>
         {searchable && (
           <label className="mb-2 flex items-center gap-2 rounded-md bg-secondary px-2 py-1.5">
             <Search className="size-4 text-muted-foreground" />
@@ -98,13 +122,13 @@ export function WheelPicker({
             onPointerUp={endPress}
             onPointerCancel={endPress}
             className={`no-scrollbar wheel-mask relative snap-y snap-mandatory ${drag ? "overflow-hidden touch-none" : "overflow-y-scroll"}`}
-            style={{ height: ITEM * 5, perspective: 600 }}
+            style={{ height: `min(${ITEM * VIS}px, calc(100dvh - 9rem))`, perspective: 900 }}
           >
-            <div style={{ height: ITEM * 2 }} />
+            <div style={{ height: ITEM * PAD }} />
             {list.length === 0 && <div className="py-2 text-center text-sm text-muted-foreground">Nincs találat</div>}
             {list.map((it, i) => {
               const offset = (i * ITEM - scroll) / ITEM;
-              const angle = drag ? 0 : Math.max(-80, Math.min(80, offset * 22));
+              const angle = drag ? 0 : Math.max(-80, Math.min(80, offset * 11));
               const isDrag = drag?.pos === i;
               const shift = drag && !isDrag ? (i > drag.pos && i <= target ? -ITEM : i < drag.pos && i >= target ? ITEM : 0) : 0;
               return (
@@ -116,8 +140,8 @@ export function WheelPicker({
                   className={`flex w-full snap-center select-none items-center justify-center truncate px-3 font-display text-lg font-semibold tracking-wide ${isDrag ? "relative z-10 rounded-md bg-primary text-primary-foreground shadow-xl" : drag ? "transition-transform" : ""}`}
                   style={{
                     height: ITEM,
-                    transform: isDrag ? `translateY(${drag!.dy}px) scale(1.05)` : `translateY(${shift}px) rotateX(${-angle}deg)`,
-                    opacity: drag ? 1 : Math.max(0.25, 1 - Math.abs(offset) * 0.3),
+                    transform: isDrag ? `translateY(${rel}px) scale(1.05)` : `translateY(${shift}px) rotateX(${-angle}deg)`,
+                    opacity: drag ? 1 : Math.max(0.25, 1 - Math.abs(offset) * 0.14),
                     color: isDrag ? undefined : !drag && Math.abs(offset) < 0.5 ? "var(--primary)" : undefined,
                     WebkitTouchCallout: "none",
                   }}
@@ -126,7 +150,7 @@ export function WheelPicker({
                 </button>
               );
             })}
-            <div style={{ height: ITEM * 2 }} />
+            <div style={{ height: ITEM * PAD }} />
           </div>
         </div>
       </div>
