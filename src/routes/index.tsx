@@ -41,11 +41,30 @@ function Field({ label, value, onChange, type = "number", className = "" }: {
   );
 }
 
+function CountUp({ value }: { value: string }) {
+  const target = Number(value.replace(/[\s\u00a0]/g, "").replace(",", "."));
+  const [shown, setShown] = useState(value);
+  const prev = useRef(0);
+  useEffect(() => {
+    if (!isFinite(target) || value.trim() === "") { setShown(value); return; }
+    const from = prev.current, t0 = performance.now(), dec = value.includes(",") ? 1 : 0;
+    let raf = 0;
+    const step = (t: number) => {
+      const p = Math.min(1, (t - t0) / 400), e = 1 - Math.pow(1 - p, 3);
+      setShown((from + (target - from) * e).toLocaleString("hu-HU", { minimumFractionDigits: dec, maximumFractionDigits: dec }));
+      if (p < 1) raf = requestAnimationFrame(step); else { setShown(value); prev.current = target; }
+    };
+    raf = requestAnimationFrame(step);
+    return () => { cancelAnimationFrame(raf); prev.current = target; };
+  }, [value]);
+  return <>{shown}</>;
+}
+
 function Stat({ label, value, tone }: { label: string; value: string; tone?: "good" | "bad" | undefined }) {
   return (
-    <div className="rounded-md border bg-card px-2 py-1">
-      <div className="truncate text-[10px] uppercase tracking-wider text-muted-foreground">{label}</div>
-      <div className={`font-mono text-sm font-semibold ${tone === "good" ? "text-success" : tone === "bad" ? "text-destructive" : ""}`}>{value}</div>
+    <div className={`rounded-md border bg-card px-2 py-1 ${tone === "bad" ? "neon-pulse-bad" : ""}`}>
+      <div className="truncate text-[10px] font-medium uppercase tracking-wider text-muted-foreground">{label}</div>
+      <div className={`font-mono text-sm font-semibold ${tone === "good" ? "text-success" : tone === "bad" ? "text-destructive" : ""}`}><CountUp value={value} /></div>
     </div>
   );
 }
