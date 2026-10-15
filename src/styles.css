@@ -41,7 +41,7 @@
   --foreground: oklch(0.96 0.01 290);
   --card: oklch(0.32 0.06 290 / 0.28);
   --card-foreground: oklch(0.96 0.01 290);
-  --popover: oklch(0.24 0.06 290 / 0.6);
+  --popover: oklch(0.26 0.09 295 / 0.35);
   --popover-foreground: oklch(0.96 0.01 290);
   --primary: oklch(0.68 0.22 300);
   --primary-foreground: oklch(0.98 0.01 300);
@@ -55,7 +55,7 @@
   --destructive-foreground: oklch(0.98 0 0);
   --success: oklch(0.82 0.15 195);
   --warning: oklch(0.82 0.16 80);
-  --border: oklch(0.75 0.12 295 / 0.18);
+  --border: oklch(0.8 0.12 220 / 0.22);
   --input: oklch(0.75 0.12 295 / 0.22);
   --ring: oklch(0.7 0.2 300);
   --glow: oklch(0.68 0.22 300 / 0.35);
@@ -75,6 +75,11 @@
   .bg-card, .bg-popover, .bg-secondary, .bg-muted {
     backdrop-filter: blur(12px);
   }
+  .bg-popover {
+    backdrop-filter: blur(22px) saturate(160%);
+    background-image: linear-gradient(150deg, oklch(0.68 0.22 300 / 0.18), oklch(0.82 0.14 210 / 0.1));
+    border-color: oklch(0.82 0.14 210 / 0.35);
+  }
   .bg-card, .bg-popover {
     box-shadow: inset 0 1px 0 oklch(1 0 0 / 0.06), 0 0 18px -8px var(--glow);
   }
@@ -90,7 +95,7 @@
 @utility neon-pulse-bad { animation: neonBad 2s ease-in-out infinite; }
 @utility neon-pulse-good { animation: neonGood 2.4s ease-in-out infinite; }
 @layer base {
-  .bg-destructive, .text-destructive.border, .border-destructive { animation: neonBad 2s ease-in-out infinite; }
+  :not(button).bg-destructive, .border-destructive:not(button) { animation: neonBad 2s ease-in-out infinite; }
 }
 
 @utility wheel-mask {

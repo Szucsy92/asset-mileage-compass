@@ -170,7 +170,7 @@ function AddDialog({ onClose, onAdd }: { onClose: () => void; onAdd: (d: Device)
   const [plate, setPlate] = useState("");
   const [type, setType] = useState("");
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center bg-background/70 pt-24 backdrop-blur-sm animate-in fade-in" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-start justify-center bg-background/40 pt-24 backdrop-blur-[2px] animate-in fade-in" onClick={onClose}>
       <form onClick={(e) => e.stopPropagation()} onSubmit={(e) => { e.preventDefault(); if (plate.trim()) onAdd(newDevice(plate.trim(), type.trim())); }}
         className="flex w-80 flex-col gap-2 rounded-xl border bg-popover p-3 animate-in zoom-in-95">
         <div className="font-display text-lg font-bold">Új technikai eszköz</div>
@@ -341,7 +341,7 @@ function StatusRow({ dev }: { dev: Device }) {
         </button>
       )}
       {open && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/70 p-4 backdrop-blur-sm animate-in fade-in" onClick={() => setOpen(false)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/40 p-4 backdrop-blur-[2px] animate-in fade-in" onClick={() => setOpen(false)}>
           <div className="flex max-h-[70dvh] w-full max-w-sm flex-col gap-2 rounded-xl border bg-popover p-3 animate-in zoom-in-95" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between">
               <span className="font-display text-sm font-bold uppercase tracking-wider">{dev.plate} – megjegyzés</span>
