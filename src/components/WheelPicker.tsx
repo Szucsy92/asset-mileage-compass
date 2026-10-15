@@ -120,7 +120,7 @@ export function WheelPicker({
             onPointerMove={(e) => movePress(e.clientY)}
             onPointerUp={endPress}
             onPointerCancel={endPress}
-            className={`no-scrollbar wheel-mask relative snap-y snap-mandatory scroll-smooth ${drag ? "overflow-hidden touch-none" : "overflow-y-scroll"}`}
+            className={`no-scrollbar wheel-mask relative snap-y snap-mandatory ${drag ? "overflow-hidden touch-none" : "overflow-y-scroll"}`}
             style={{ height: `min(${ITEM * VIS}px, calc(100dvh - 9rem))`, perspective: 700, WebkitOverflowScrolling: "touch", overscrollBehavior: "contain" }}
           >
             <div style={{ height: ITEM * PAD }} />
