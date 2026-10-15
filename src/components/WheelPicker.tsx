@@ -96,13 +96,12 @@ export function WheelPicker({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center bg-background/70 pt-10 backdrop-blur-sm animate-in fade-in" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-start justify-center bg-background/40 pt-10 backdrop-blur-[2px] animate-in fade-in" onClick={onClose}>
       <div className="relative w-[min(92vw,26rem)] rounded-xl border bg-popover p-2 shadow-2xl animate-in zoom-in-95 slide-in-from-top-4" onClick={(e) => e.stopPropagation()}>
         {searchable && (
           <label className="mb-2 flex items-center gap-2 rounded-md bg-secondary px-2 py-1.5">
             <Search className="size-4 text-muted-foreground" />
             <input
-              autoFocus
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter" && list[0]) onSelect(list[0].idx); }}
