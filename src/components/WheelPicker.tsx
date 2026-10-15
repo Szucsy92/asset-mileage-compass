@@ -121,15 +121,17 @@ export function WheelPicker({
             onPointerUp={endPress}
             onPointerCancel={endPress}
             className={`no-scrollbar wheel-mask relative snap-y snap-mandatory ${drag ? "overflow-hidden touch-none" : "overflow-y-scroll"}`}
-            style={{ height: `min(${ITEM * VIS}px, calc(100dvh - 9rem))`, perspective: 900 }}
+            style={{ height: `min(${ITEM * VIS}px, calc(100dvh - 9rem))`, perspective: 700, WebkitOverflowScrolling: "touch", overscrollBehavior: "contain" }}
           >
             <div style={{ height: ITEM * PAD }} />
             {list.length === 0 && <div className="py-2 text-center text-sm text-muted-foreground">Nincs találat</div>}
             {list.map((it, i) => {
               const offset = (i * ITEM - scroll) / ITEM;
-              const angle = drag ? 0 : Math.max(-80, Math.min(80, offset * 11));
+              const angle = drag ? 0 : Math.max(-88, Math.min(88, offset * 18));
+              const R = 130;
               const isDrag = drag?.pos === i;
               const shift = drag && !isDrag ? (i > drag.pos && i <= target ? -ITEM : i < drag.pos && i >= target ? ITEM : 0) : 0;
+              const cyl = drag ? "" : `translateZ(${-R}px) rotateX(${-angle}deg) translateZ(${R}px)`;
               return (
                 <button
                   key={it.label}
@@ -139,8 +141,10 @@ export function WheelPicker({
                   className={`flex w-full snap-center select-none items-center justify-center truncate px-3 font-display text-lg font-semibold tracking-wide ${isDrag ? "relative z-10 rounded-md bg-primary text-primary-foreground shadow-xl" : drag ? "transition-transform" : ""}`}
                   style={{
                     height: ITEM,
-                    transform: isDrag ? `translateY(${rel}px) scale(1.05)` : `translateY(${shift}px) rotateX(${-angle}deg)`,
-                    opacity: drag ? 1 : Math.max(0.25, 1 - Math.abs(offset) * 0.14),
+                    transform: isDrag ? `translateY(${rel}px) scale(1.05)` : `translateY(${shift}px) ${cyl}`,
+                    backfaceVisibility: "hidden",
+                    opacity: drag ? 1 : Math.max(0.15, Math.cos((angle * Math.PI) / 180)),
+                    filter: drag || Math.abs(offset) < 1.5 ? undefined : `blur(${Math.min(1.5, (Math.abs(offset) - 1.5) * 0.4)}px)`,
                     color: isDrag ? undefined : !drag && Math.abs(offset) < 0.5 ? "var(--primary)" : undefined,
                     WebkitTouchCallout: "none",
                   }}
