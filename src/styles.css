@@ -63,11 +63,12 @@
 
 @layer base {
   * { border-color: var(--color-border); }
-  html { background: #0b0d1b; }
+  html { background: #130a24; }
   body {
     min-height: 100dvh;
     background: radial-gradient(120% 60% at 80% 0%, oklch(0.32 0.12 300 / 0.35), transparent 60%),
-      linear-gradient(160deg, #0b0d1b 0%, #12152b 100%) fixed;
+      radial-gradient(90% 50% at 0% 100%, oklch(0.6 0.14 220 / 0.18), transparent 60%),
+      linear-gradient(155deg, #130a24 0%, #0a0e22 50%, #061226 100%) fixed;
     color: var(--color-foreground);
     font-family: var(--font-sans);
   }

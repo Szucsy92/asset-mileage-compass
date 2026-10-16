@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Search } from "lucide-react";
 
-const ITEM = 40;
+const ITEM = 46;
+const TOP = 2;
 
 /** Ékezet-, kis/nagybetű-, szóköz- és kötőjel-független összehasonlítás */
 export const norm = (s: string) =>
@@ -26,7 +27,7 @@ export function WheelPicker({
 }: { items: string[]; value: number; onSelect: (i: number) => void; onClose: () => void; searchable?: boolean; onReorder?: ((from: number, to: number) => void) | undefined }) {
   const [drag, setDrag] = useState<{ pos: number; y0: number; dy: number; s0: number } | null>(null);
   const pointerY = useRef(0);
-  const VIS = 9, PAD = 4;
+  const VIS = 9, PAD = 6;
   const press = useRef<{ t: ReturnType<typeof setTimeout>; y: number } | null>(null);
   const justDragged = useRef(false);
   const canReorder = !!onReorder;
@@ -113,7 +114,7 @@ export function WheelPicker({
         )}
         {canReorder && !query && <div className="mb-1 text-center text-[10px] text-muted-foreground">Hosszan nyomva húzással áthelyezhető</div>}
         <div className="relative">
-          <div className="pointer-events-none absolute inset-x-0 top-1/2 h-10 -translate-y-1/2 rounded-md border border-primary/60 bg-primary/10" />
+          <div style={{ top: TOP * ITEM, height: ITEM }} className="pointer-events-none absolute inset-x-0 rounded-md border border-primary/60 bg-primary/10" />
           <div
             ref={ref}
             onScroll={() => setScroll(ref.current!.scrollTop)}
@@ -123,7 +124,7 @@ export function WheelPicker({
             className={`no-scrollbar wheel-mask relative ${drag ? "overflow-hidden touch-none" : "overflow-y-scroll"}`}
             style={{ height: `min(${ITEM * VIS}px, calc(100dvh - 9rem))`, WebkitOverflowScrolling: "touch", overscrollBehavior: "contain" }}
           >
-            <div style={{ height: ITEM * PAD }} />
+            <div style={{ height: ITEM * TOP }} />
             {list.length === 0 && <div className="py-2 text-center text-sm text-muted-foreground">Nincs találat</div>}
             {list.map((it, i) => {
               const offset = (i * ITEM - scroll) / ITEM;
@@ -135,7 +136,7 @@ export function WheelPicker({
                   onPointerDown={(e) => startPress(i, e.clientY)}
                   onContextMenu={(e) => canReorder && e.preventDefault()}
                   onClick={() => { if (justDragged.current) { justDragged.current = false; return; } onSelect(it.idx); }}
-                  className={`flex w-full select-none items-center justify-center truncate px-3 font-display text-lg font-semibold tracking-wide ${isDrag ? "relative z-10 rounded-md bg-primary text-primary-foreground shadow-xl ring-2 ring-accent" : drag ? "transition-transform duration-150" : ""}`}
+                  className={`flex w-full select-none items-center justify-center truncate px-3 font-display text-2xl font-semibold tracking-wide ${isDrag ? "relative z-10 rounded-md bg-primary text-primary-foreground shadow-xl ring-2 ring-accent" : drag ? "transition-transform duration-150" : ""}`}
                   style={{
                     height: ITEM,
                     transform: isDrag ? `translateY(${rel}px) scale(1.04)` : shift ? `translateY(${shift}px)` : undefined,
