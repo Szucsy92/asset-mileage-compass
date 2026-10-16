@@ -78,6 +78,14 @@ function Index() {
 
   useEffect(() => { setMonth(new Date().getMonth()); }, []);
   useEffect(() => {
+    if (status === "loading") return;
+    const el = document.getElementById("splash");
+    if (!el) return;
+    el.classList.add("splash-hide");
+    const t = setTimeout(() => el.remove(), 450);
+    return () => clearTimeout(t);
+  }, [status]);
+  useEffect(() => {
     if (devices.length && !devices.find((d) => d.id === devId)) {
       setDevId(devices[0]!.id);
       const lm = latestUpTo(devices[0]!, 11);

@@ -79,6 +79,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
       { title: "Technikaieszköz_nyilvántartás" },
+      { name: "theme-color", content: "#130a24" },
     ],
     links: [
       {
@@ -87,7 +88,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       },
       { rel: "preconnect", href: "https://fonts.googleapis.com" },
       { rel: "stylesheet", href: "https://fonts.googleapis.com/css2?family=Barlow:wght@400;600&family=Barlow+Condensed:wght@600;700&family=JetBrains+Mono:wght@400;600&display=swap" },
-      { rel: "icon", href: "/favicon.png", type: "image/png" }, { rel: "apple-touch-icon", href: "/favicon.png" },
+      { rel: "icon", href: "/favicon.png", type: "image/png" }, { rel: "apple-touch-icon", href: "/favicon.png" }, { rel: "manifest", href: "/manifest.webmanifest" },
     ],
   }),
   shellComponent: RootShell,
@@ -103,6 +104,7 @@ function RootShell({ children }: { children: ReactNode }) {
         <HeadContent />
       </head>
       <body>
+        <div id="splash" aria-hidden="true"><div className="splash-glow" /><img src="/favicon.png" alt="" className="splash-icon" /></div>
         {children}
         <Scripts />
       </body>
