@@ -47,15 +47,21 @@ export async function parseWorkbook(file: File): Promise<Parsed[]> {
 }
 
 /** Összefésülés: a fájlban szereplő eszközök minden hónapja frissül, okmányok/beállítások megmaradnak */
-export function mergeImport(current: Device[], parsed: Parsed[]) {
+const similar = (a: string, b: string) => { const x = norm(a), y = norm(b); return x.length >= 4 && y.length >= 4 && (x.includes(y) || y.includes(x)); };
+export function mergeImport(current: Device[], parsed: Parsed[], keepNames = true, ask: (p: Parsed, d: Device) => boolean = () => false) {
   let updated = 0, added = 0;
   const devices = [...current];
   for (const p of parsed) {
-    const i = devices.findIndex((d) => norm(d.plate) === norm(p.plate));
+    let i = devices.findIndex((d) => norm(d.plate) === norm(p.plate));
+    if (i < 0) {
+      const taken = new Set(parsed.map((x) => norm(x.plate)));
+      const j = devices.findIndex((d) => !taken.has(norm(d.plate)) && similar(d.plate, p.plate));
+      if (j >= 0 && ask(p, devices[j]!)) i = j;
+    }
     const months = Object.fromEntries(Object.entries(p.months).filter(([, r]) => r.length));
     if (i >= 0) {
       const d = devices[i]!;
-      devices[i] = { ...d, type: p.type || d.type, category: p.category || d.category, startOdometer: p.start ?? d.startOdometer, months };
+      devices[i] = { ...d, ...(keepNames ? {} : { plate: p.plate, type: p.type || d.type, category: p.category || d.category }), startOdometer: p.start ?? d.startOdometer, months };
       updated++;
     } else {
       devices.push({ ...newDevice(p.plate, p.type), category: p.category, startOdometer: p.start ?? 0, months });

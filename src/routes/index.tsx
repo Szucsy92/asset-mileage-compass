@@ -60,11 +60,11 @@ function CountUp({ value }: { value: string }) {
   return <>{shown}</>;
 }
 
-function Stat({ label, value, tone }: { label: string; value: string; tone?: "good" | "bad" | undefined }) {
+function Stat({ label, value, tone }: { label: string; value: string; tone?: "good" | "bad" | "warn" | undefined }) {
   return (
     <div className={`rounded-md border bg-card px-2 py-1 ${tone === "bad" ? "neon-pulse-bad" : ""}`}>
       <div className="truncate text-[10px] font-medium uppercase tracking-wider text-muted-foreground">{label}</div>
-      <div className={`font-mono text-sm font-semibold ${tone === "good" ? "text-success" : tone === "bad" ? "text-destructive" : ""}`}><CountUp value={value} /></div>
+      <div className={`font-mono text-sm font-semibold ${tone === "good" ? "text-success" : tone === "bad" ? "text-destructive" : tone === "warn" ? "text-warning" : ""}`}><CountUp value={value} /></div>
     </div>
   );
 }
@@ -115,8 +115,9 @@ function Index() {
                 const { parseWorkbook, mergeImport } = await import("@/lib/importXlsx");
                 const parsed = await parseWorkbook(f);
                 if (!parsed.length) { alert("A fájlban nem találtam eszközt (Forgalmi rendszám blokkokat)."); return; }
-                if (!confirm(`${parsed.length} eszközt találtam. Az összes eszköz összes hónapja frissül a fájlból a ${year}. évben (okmányok, beállítások megmaradnak). Folytatod?`)) return;
-                const r = mergeImport(devices, parsed);
+                if (!confirm(`${parsed.length} eszközt találtam. A havi adatok frissülnek a fájlból a ${year}. évben (okmányok, beállítások, sorrend megmaradnak). Folytatod?`)) return;
+                const keepNames = confirm("Nevek: az appban lévő azonosítók és típusok maradjanak?\n\nOK = app nevei maradnak (ajánlott)\nMégse = Excel nevei");
+                const r = mergeImport(devices, parsed, keepNames, (p, d) => confirm(`Excel: „${p.plate} · ${p.type}”\nEz azonos ezzel: „${d.plate} · ${d.type}”?\n\nOK = igen, frissítse\nMégse = új eszközként vegye fel`));
                 actions.replaceAll(r.devices);
                 alert(`Kész: ${r.updated} eszköz frissítve, ${r.added} új eszköz hozzáadva.`);
               } catch { alert("A fájl beolvasása nem sikerült."); }
@@ -192,8 +193,10 @@ function Sheet({ dev, month }: { dev: Device; month: number }) {
   const own = dev.months[month] ?? [];
   const s = monthStats(dev, latest ?? month);
   const c = cumulative(dev, month);
-  const allowedToDate = (dev.yearlyAllowed / 12) * (month + 1);
   const u = dev.unit;
+  const dd = u === "km" ? 0 : 1;
+  const left = dev.yearlyAllowed - c.km;
+  const capTone = !dev.yearlyAllowed ? undefined : left < 0 ? "bad" as const : left <= (u === "km" ? 1000 : 100) ? "warn" as const : undefined;
 
   const autoDiff = (r: Row) => (dev.norm > 0 ? Math.round(((u === "km" ? ((r.weightedKm || r.km) * dev.norm) / 100 : r.km * dev.norm) - r.fuel) * 10) / 10 : r.diff);
   const setRow = (id: string, p: Partial<Row>) => {
@@ -249,7 +252,7 @@ function Sheet({ dev, month }: { dev: Device; month: number }) {
               {inherited ? (
                 <>
                   <span className="truncate font-mono text-[11px]">{r.docNo}</span>
-                  <span className={cell}>{fmt(r.odometer, 1)}</span><span className={cell}>{fmt(r.km, 1)}</span><span className={cell}>{fmt(r.weightedKm)}</span>
+                  <span className={cell}>{fmt(r.odometer, dd)}</span><span className={cell}>{fmt(r.km, dd)}</span><span className={cell}>{fmt(r.weightedKm, dd)}</span>
                   <span className={cell}>{fmt(r.fuel, 1)}</span><span className={cell}>{fmt(r.diff, 1)}</span><span />
                 </>
               ) : (
@@ -267,18 +270,18 @@ function Sheet({ dev, month }: { dev: Device; month: number }) {
           ))}
         </div>
         <div className="mt-1 grid grid-cols-4 gap-1">
-          <Stat label={`Havi ${u}`} value={fmt(s.km, 1)} />
+          <Stat label={`Havi ${u}`} value={fmt(s.km, dd)} />
           <Stat label="Havi üa. l" value={fmt(s.fuel, 1)} />
           <Stat label={s.diff >= 0 ? "Megtak." : "Túlfogy."} value={fmt(Math.abs(s.diff), 1)} tone={tone(s.diff)} />
-          <Stat label={`Állás`} value={fmt(lastOdometer(dev, month), 1)} />
+          <Stat label={`Állás`} value={fmt(lastOdometer(dev, month), dd)} />
         </div>
       </section>
 
       <section className="rounded-lg border bg-card p-1.5">
         <h2 className="mb-1 font-display text-xs font-bold uppercase tracking-wider">Göngyölítve jan.–{MONTHS[month]!.slice(0, 3).toLowerCase()}.</h2>
         <div className="grid grid-cols-4 gap-1">
-          <Stat label={`Telj. ${u}`} value={fmt(c.km, 1)} tone={dev.yearlyAllowed && c.km > allowedToDate ? "bad" : undefined} />
-          <Stat label={`Keret ${u}`} value={dev.yearlyAllowed ? fmt(allowedToDate) : "—"} />
+          <Stat label={`Telj. ${u}`} value={fmt(c.km, dd)} tone={capTone} />
+          <Stat label={`Hátra ${u}`} value={dev.yearlyAllowed ? fmt(left, dd) : "—"} tone={capTone} />
           <Stat label="Üzemanyag l" value={fmt(c.fuel, 1)} />
           <Stat label={c.diff >= 0 ? "Megtak." : "Túlfogy."} value={fmt(Math.abs(c.diff), 1)} tone={tone(c.diff)} />
         </div>
