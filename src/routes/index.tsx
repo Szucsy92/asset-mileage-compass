@@ -221,18 +221,18 @@ function Sheet({ dev, month }: { dev: Device; month: number }) {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-1.5">
-      <section className="grid grid-cols-6 gap-1 rounded-lg border bg-card p-1.5">
-        <Field className="col-span-2" label="Azonosító" type="text" value={dev.plate} onChange={(v) => up({ plate: v })} />
-        <Field className="col-span-3" label="Típus" type="text" value={dev.type} onChange={(v) => up({ type: v })} />
+      <section className="grid grid-cols-8 gap-1 rounded-lg border bg-card p-1.5">
+        <Field className="col-span-3" label="Azonosító" type="text" value={dev.plate} onChange={(v) => up({ plate: v })} />
+        <Field className="col-span-4" label="Típus" type="text" value={dev.type} onChange={(v) => up({ type: v })} />
         <Field className="col-span-1" label="Bes." type="text" value={dev.category} onChange={(v) => up({ category: v })} />
         <label className="col-span-1 flex min-w-0 flex-col rounded-md bg-secondary px-1.5 py-1">
           <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Egys.</span>
-          <select value={u} onChange={(e) => up({ unit: e.target.value as Device["unit"] })} className="bg-transparent font-mono text-sm outline-none">
+          <select value={u} onChange={(e) => up({ unit: e.target.value as Device["unit"] })} className="w-full min-w-0 bg-transparent font-mono text-sm outline-none">
             <option value="km">km</option><option value="üó">üó</option>
           </select>
         </label>
-        <Field className="col-span-1" label={u === "km" ? "l/100" : "l/üó"} value={dev.norm || ""} onChange={(v) => up({ norm: num(v) ?? 0 })} />
-        <Field className="col-span-2" label={`Évi keret ${u}`} value={dev.yearlyAllowed || ""} onChange={(v) => up({ yearlyAllowed: num(v) ?? 0 })} />
+        <Field className="col-span-2" label={u === "km" ? "l/100" : "l/üó"} value={dev.norm || ""} onChange={(v) => up({ norm: num(v) ?? 0 })} />
+        <Field className="col-span-3" label={`Évi keret ${u}`} value={dev.yearlyAllowed || ""} onChange={(v) => up({ yearlyAllowed: num(v) ?? 0 })} />
         <Field className="col-span-2" label={`Nyitó ${u}`} value={dev.startOdometer || ""} onChange={(v) => up({ startOdometer: num(v) ?? 0 })} />
       </section>
 
@@ -282,7 +282,7 @@ function Sheet({ dev, month }: { dev: Device; month: number }) {
         <div className="grid grid-cols-4 gap-1">
           <Stat label={`Telj. ${u}`} value={fmt(c.km, dd)} tone={capTone} />
           <Stat label={`Hátra ${u}`} value={dev.yearlyAllowed ? fmt(left, dd) : "—"} tone={capTone} />
-          <Stat label="Üzemanyag l" value={fmt(c.fuel, 1)} />
+          <Stat label="ÜA. l" value={fmt(c.fuel, 1)} />
           <Stat label={c.diff >= 0 ? "Megtak." : "Túlfogy."} value={fmt(Math.abs(c.diff), 1)} tone={tone(c.diff)} />
         </div>
       </section>
