@@ -221,11 +221,11 @@ function Sheet({ dev, month }: { dev: Device; month: number }) {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-1.5">
-      <section className="grid grid-cols-8 gap-1 rounded-lg border bg-card p-1.5">
+      <section className="grid grid-cols-9 gap-1 rounded-lg border bg-card p-1.5">
         <Field className="col-span-3" label="Azonosító" type="text" value={dev.plate} onChange={(v) => up({ plate: v })} />
         <Field className="col-span-4" label="Típus" type="text" value={dev.type} onChange={(v) => up({ type: v })} />
-        <Field className="col-span-1" label="Bes." type="text" value={dev.category} onChange={(v) => up({ category: v })} />
-        <label className="col-span-1 flex min-w-0 flex-col rounded-md bg-secondary px-1.5 py-1">
+        <Field className="col-span-2" label="Bes." type="text" value={dev.category} onChange={(v) => up({ category: v })} />
+        <label className="col-span-2 flex min-w-0 flex-col rounded-md bg-secondary px-1.5 py-1">
           <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Egys.</span>
           <select value={u} onChange={(e) => up({ unit: e.target.value as Device["unit"] })} className="w-full min-w-0 bg-transparent font-mono text-sm outline-none">
             <option value="km">km</option><option value="üó">üó</option>
