@@ -82,8 +82,6 @@ function Index() {
     const el = document.getElementById("splash");
     if (!el) return;
     el.classList.add("splash-hide");
-    const t = setTimeout(() => el.remove(), 450);
-    return () => clearTimeout(t);
   }, [status]);
   useEffect(() => {
     if (devices.length && !devices.find((d) => d.id === devId)) {
