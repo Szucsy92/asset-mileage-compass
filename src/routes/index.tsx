@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { ChevronDown, Plus, Trash2, AlertTriangle, X, Lock, CalendarPlus, Upload } from "lucide-react";
 import { WheelPicker } from "@/components/WheelPicker";
 import {
@@ -382,10 +383,10 @@ function ExpiryBar({ alerts, onPick }: { alerts: Alert[]; onPick: (id: string) =
         <AlertTriangle className="size-3.5" />Lejáró vizsgák
         <span className="rounded-full bg-destructive px-1.5 text-[10px] font-bold text-destructive-foreground">{alerts.length}</span>
       </button>
-      {open && (
+      {open && createPortal(
         <>
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-          <div className="glass-bubble absolute bottom-0 left-1/2 z-50 w-[min(92vw,30rem)] origin-bottom overflow-hidden rounded-2xl border border-destructive/50 text-xs text-destructive">
+          <div className="glass-bubble fixed bottom-2 left-1/2 z-50 w-[min(92vw,30rem)] origin-bottom overflow-hidden rounded-2xl border border-destructive/50 text-xs text-destructive">
             <div className="flex items-center gap-1.5 border-b border-destructive/30 px-3 py-1.5 font-semibold">
               <AlertTriangle className="size-3.5" />Lejáró vizsgák ({alerts.length})
               <button aria-label="Bezárás" onClick={() => setOpen(false)} className="ml-auto"><X className="size-4" /></button>
@@ -396,7 +397,7 @@ function ExpiryBar({ alerts, onPick }: { alerts: Alert[]; onPick: (id: string) =
               ))}
             </div>
           </div>
-        </>
+        </>, document.body
       )}
     </div>
   );
