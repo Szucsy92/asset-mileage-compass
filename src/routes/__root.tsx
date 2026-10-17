@@ -104,7 +104,6 @@ function RootShell({ children }: { children: ReactNode }) {
         <HeadContent />
       </head>
       <body>
-        <div id="splash" aria-hidden="true"><div className="splash-glow" /><img src="/favicon.png" alt="" className="splash-icon" /></div>
         {children}
         <Scripts />
       </body>

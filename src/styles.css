@@ -63,7 +63,7 @@
 
 @layer base {
   * { border-color: var(--color-border); }
-  html { background: #130a24; }
+  html { min-height: 100%; background: linear-gradient(155deg, #130a24 0%, #0a0e22 50%, #061226 100%) fixed #130a24; }
   body {
     min-height: 100dvh;
     background: radial-gradient(120% 60% at 80% 0%, oklch(0.32 0.12 300 / 0.35), transparent 60%),
