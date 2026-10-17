@@ -99,7 +99,7 @@ function Index() {
   ).sort((a, b) => a.days! - b.days!);
 
   return (
-    <main className="mx-auto flex h-dvh max-w-xl flex-col gap-2 overflow-hidden p-2">
+    <main className="mx-auto flex h-[100svh] max-w-xl flex-col gap-2 overflow-hidden p-2">
       <div className="flex items-center gap-1.5 text-xs">
         <div className="no-scrollbar flex gap-1 overflow-x-auto">
           {years.map((y) => (
@@ -369,8 +369,7 @@ type Alert = { d: Device; doc: { id: string; name: string; expiry: string }; day
 function ExpiryBar({ alerts, onPick }: { alerts: Alert[]; onPick: (id: string) => void }) {
   const [open, setOpen] = useState(false);
   if (!alerts.length) return null;
-  const first = alerts[0]!;
-  const line = (a: Alert) => (
+    const line = (a: Alert) => (
     <>
       <span className="font-mono font-bold">{a.d.plate}</span> · {a.doc.name} ·{" "}
       <span className="font-mono">{a.doc.expiry.replaceAll("-", ".")}.</span>{" "}
@@ -378,19 +377,26 @@ function ExpiryBar({ alerts, onPick }: { alerts: Alert[]; onPick: (id: string) =
     </>
   );
   return (
-    <div className="shrink-0 overflow-hidden rounded-lg border border-destructive bg-destructive/15 text-xs text-destructive">
-      <button onClick={() => setOpen(!open)} className="flex w-full items-center gap-2 px-2 py-1.5 text-left">
-        <AlertTriangle className="size-4 shrink-0" />
-        <span className="min-w-0 flex-1 truncate">{line(first)}</span>
-        {alerts.length > 1 && <span className="rounded bg-destructive px-1.5 font-bold text-destructive-foreground">+{alerts.length - 1}</span>}
-        <ChevronDown className={`size-4 shrink-0 transition-transform ${open ? "rotate-180" : ""}`} />
+    <div className="relative flex shrink-0 justify-center">
+      <button onClick={() => setOpen(true)} className="glass-capsule flex items-center gap-1.5 rounded-full border border-destructive/60 px-4 py-1 text-xs font-semibold text-destructive">
+        <AlertTriangle className="size-3.5" />Lejáró vizsgák
+        <span className="rounded-full bg-destructive px-1.5 text-[10px] font-bold text-destructive-foreground">{alerts.length}</span>
       </button>
       {open && (
-        <div className="no-scrollbar max-h-36 overflow-y-auto border-t border-destructive/40 animate-in slide-in-from-top-2">
-          {alerts.map((a) => (
-            <button key={a.doc.id} onClick={() => { onPick(a.d.id); setOpen(false); }} className="block w-full truncate px-2 py-1 text-left odd:bg-destructive/10">{line(a)}</button>
-          ))}
-        </div>
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
+          <div className="glass-bubble absolute bottom-0 left-1/2 z-50 w-[min(92vw,30rem)] origin-bottom overflow-hidden rounded-2xl border border-destructive/50 text-xs text-destructive">
+            <div className="flex items-center gap-1.5 border-b border-destructive/30 px-3 py-1.5 font-semibold">
+              <AlertTriangle className="size-3.5" />Lejáró vizsgák ({alerts.length})
+              <button aria-label="Bezárás" onClick={() => setOpen(false)} className="ml-auto"><X className="size-4" /></button>
+            </div>
+            <div className="no-scrollbar max-h-[45dvh] overflow-y-auto overscroll-contain">
+              {alerts.map((a) => (
+                <button key={a.doc.id} onClick={() => { onPick(a.d.id); setOpen(false); }} className="block w-full truncate px-3 py-1.5 text-left odd:bg-destructive/10">{line(a)}</button>
+              ))}
+            </div>
+          </div>
+        </>
       )}
     </div>
   );
