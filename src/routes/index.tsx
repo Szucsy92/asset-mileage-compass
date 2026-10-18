@@ -98,7 +98,7 @@ function Index() {
   });
 
   return (
-    <main className="mx-auto flex h-[100svh] max-w-xl flex-col gap-2 overflow-hidden p-2">
+    <main className={`mx-auto flex h-[100svh] max-w-xl flex-col gap-2 overflow-hidden p-2 ${alerts.length ? "pb-11" : ""}`}>
       <div className="flex items-center gap-1.5 text-xs">
         <div className="no-scrollbar flex gap-1 overflow-x-auto">
           {years.map((y) => (
@@ -376,7 +376,7 @@ function ExpiryBar({ alerts, onPick }: { alerts: Alert[]; onPick: (id: string) =
     </>
   );
   return (
-    <div className="relative flex shrink-0 justify-center">
+    <div className="fixed bottom-[max(0.5rem,env(safe-area-inset-bottom))] left-1/2 z-30 -translate-x-1/2">
       <button onClick={() => setOpen(true)} className="glass-capsule flex items-center gap-1.5 rounded-full border border-destructive/60 px-4 py-1 text-xs font-semibold text-destructive">
         <AlertTriangle className="size-3.5" />Lejáró vizsgák
         <span className="rounded-full bg-destructive px-1.5 text-[10px] font-bold text-destructive-foreground">{alerts.length}</span>
