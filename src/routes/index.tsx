@@ -93,7 +93,7 @@ function Index() {
     d.docs.map((doc) => ({ d, doc, days: daysLeft(doc.expiry) })).filter((x) => x.days != null && x.days <= 30),
   ).sort((a, b) => {
     const ea = a.days! < 0, eb = b.days! < 0;
-    if (ea !== eb) return ea ? -1 : 1;
+    if (ea !== eb) return ea ? 1 : -1;
     return ea ? b.days! - a.days! : a.days! - b.days!;
   });
 
