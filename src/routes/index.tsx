@@ -191,6 +191,7 @@ const cell = "w-full min-w-0 bg-transparent px-0.5 font-mono text-[11px] outline
 
 function Sheet({ dev, month, closed }: { dev: Device; month: number; closed: boolean }) {
   const [documentOpen, setDocumentOpen] = useState(false);
+  const [detailTab, setDetailTab] = useState<"docs" | "service">("docs");
   const up = (p: Partial<Device>) => actions.update(dev.id, p);
   const latest = latestUpTo(dev, month);
   const inherited = latest != null && latest !== month;
@@ -294,12 +295,15 @@ function Sheet({ dev, month, closed }: { dev: Device; month: number; closed: boo
 
       <section className="flex min-h-0 flex-1 flex-col rounded-lg border bg-card p-1.5">
         <div className="mb-1 flex items-center justify-between">
-          <h2 className="font-display text-xs font-bold uppercase tracking-wider">Okmányok, vizsgák</h2>
-          <Button variant="ghost" size="sm" className="h-6 px-1 text-primary" onClick={() => setDocumentOpen(true)}><Plus />Okmány</Button>
+          <div role="tablist" aria-label="Eszköz részletei" className="flex min-w-0 gap-1">
+            <Button role="tab" aria-selected={detailTab === "docs"} variant="ghost" size="sm" className={`h-6 px-1 font-display text-xs ${detailTab === "docs" ? "text-accent" : "text-muted-foreground"}`} onClick={() => setDetailTab("docs")}>Okmányok, vizsgák</Button>
+            <Button role="tab" aria-selected={detailTab === "service"} variant="ghost" size="sm" className={`h-6 px-1 font-display text-xs ${detailTab === "service" ? "text-accent" : "text-muted-foreground"}`} onClick={() => setDetailTab("service")}>Szerviz</Button>
+          </div>
+          {detailTab === "docs" && <Button variant="ghost" size="sm" className="h-6 px-1 text-primary" onClick={() => setDocumentOpen(true)}><Plus />Okmány</Button>}
         </div>
-        <StatusRow dev={dev} />
+        {detailTab === "docs" && <StatusRow dev={dev} />}
         <div className="no-scrollbar flex min-h-0 flex-col gap-1 overflow-y-auto">
-          {dev.docs.map((doc) => {
+          {detailTab === "docs" && dev.docs.map((doc) => {
             const days = daysLeft(doc.expiry);
             const st = expiryState(days);
             const setDoc = (p: Partial<typeof doc>) => up({ docs: dev.docs.map((x) => (x.id === doc.id ? { ...x, ...p } : x)) });
@@ -315,7 +319,7 @@ function Sheet({ dev, month, closed }: { dev: Device; month: number; closed: boo
               </div>
             );
           })}
-          <ServicePanel dev={dev} closed={closed} />
+          {detailTab === "service" && <ServicePanel dev={dev} closed={closed} />}
         </div>
       </section>
       {documentOpen && <DocumentDialog onClose={() => setDocumentOpen(false)} onAdd={(doc) => { up({ docs: [...dev.docs, doc] }); setDocumentOpen(false); }} />}

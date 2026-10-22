@@ -130,6 +130,8 @@
   box-shadow: 0 0 24px -4px var(--lens-halo), inset 0 0 12px -4px var(--glow);
   transition: top 90ms ease-out;
 }
+[role="dialog"][aria-label="Technikai eszköz kiválasztása"],
+[role="dialog"][aria-label="Hónap kiválasztása"] { background-color: var(--background); }
 .wheel-item { transition: transform 260ms cubic-bezier(.22,1.35,.38,1), opacity 160ms ease-out; }
 .wheel-item:hover { background: transparent; box-shadow: none; }
 .wheel-item:active { transform: none; }
