@@ -145,7 +145,7 @@ export function WheelPicker({
     if (!g) return;
     const dy = e.clientY - g.y0;
     if (!g.moved && Math.abs(dy) > TAP_SLOP) { g.moved = true; clearTimeout(g.timer); setScrubbing(true); }
-    if (g.moved) setLens(Math.max(-1, Math.min(1, dy / ITEM)));
+    if (g.moved) setLens(Math.max(Math.min(1, scroll / ITEM) * -1, Math.min(1, dy / ITEM)));
   };
 
   const onUp = () => {
