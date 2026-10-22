@@ -156,7 +156,7 @@ function Index() {
         </div>
       </div>
 
-      {dev ? <fieldset disabled={closed} className="flex min-h-0 flex-1 flex-col"><Sheet key={dev.id} dev={dev} month={month} closed={closed} /></fieldset> : <p className="p-6 text-center text-muted-foreground">{status === "loading" ? "Betöltés…" : "Nincs eszköz."}</p>}
+      {dev ? <div className="flex min-h-0 flex-1 flex-col"><Sheet key={dev.id} dev={dev} month={month} closed={closed} /></div> : <p className="p-6 text-center text-muted-foreground">{status === "loading" ? "Betöltés…" : "Nincs eszköz."}</p>}
       <ExpiryBar alerts={alerts} onPick={(id) => setDevId(id)} />
 
       {picker === "dev" && devices.length > 0 && (
@@ -227,7 +227,7 @@ function Sheet({ dev, month, closed }: { dev: Device; month: number; closed: boo
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-1.5">
-      <section className="grid grid-cols-9 gap-1 rounded-lg border bg-card p-1.5">
+      <fieldset disabled={closed} className="grid grid-cols-9 gap-1 rounded-lg border bg-card p-1.5">
         <Field className="col-span-3" label="Azonosító" type="text" value={dev.plate} onChange={(v) => up({ plate: v })} />
         <Field className="col-span-4" label="Típus" type="text" value={dev.type} onChange={(v) => up({ type: v })} />
         <Field className="col-span-2" label="Bes." type="text" value={dev.category} onChange={(v) => up({ category: v })} />
@@ -240,9 +240,9 @@ function Sheet({ dev, month, closed }: { dev: Device; month: number; closed: boo
         <Field className="col-span-2" label={u === "km" ? "l/100" : "l/üó"} value={dev.norm || ""} onChange={(v) => up({ norm: num(v) ?? 0 })} />
         <Field className="col-span-3" label={`Évi keret ${u}`} value={dev.yearlyAllowed || ""} onChange={(v) => up({ yearlyAllowed: num(v) ?? 0 })} />
         <Field className="col-span-2" label={`Nyitó ${u}`} value={dev.startOdometer || ""} onChange={(v) => up({ startOdometer: num(v) ?? 0 })} />
-      </section>
+      </fieldset>
 
-      <section className="flex min-h-0 flex-[1.4] flex-col rounded-lg border bg-card p-1.5">
+      <fieldset disabled={closed} className="flex min-h-0 flex-[1.4] flex-col rounded-lg border bg-card p-1.5">
         <div className="mb-1 flex items-center gap-2">
           <h2 className="font-display text-sm font-bold uppercase tracking-wider">{MONTHS[month]}</h2>
           {inherited && <span className="rounded bg-accent px-1.5 text-[10px] text-muted-foreground">göngyölítve: {MONTHS[latest]}</span>}
@@ -281,7 +281,7 @@ function Sheet({ dev, month, closed }: { dev: Device; month: number; closed: boo
           <Stat label={s.diff >= 0 ? "Megtak." : "Túlfogy."} value={fmt(Math.abs(s.diff), 1)} tone={tone(s.diff)} />
           <Stat label={`Állás`} value={fmt(lastOdometer(dev, month), dd)} />
         </div>
-      </section>
+      </fieldset>
 
       <section className="rounded-lg border bg-card p-1.5">
         <h2 className="mb-1 font-display text-xs font-bold uppercase tracking-wider">Göngyölítve jan.–{MONTHS[month]!.slice(0, 3).toLowerCase()}.</h2>
@@ -293,22 +293,22 @@ function Sheet({ dev, month, closed }: { dev: Device; month: number; closed: boo
         </div>
       </section>
 
-      <section className="flex min-h-0 flex-1 flex-col rounded-lg border bg-card p-1.5">
+      <section className={`flex flex-1 flex-col rounded-lg border bg-card p-1.5 ${detailTab === "service" ? "min-h-[178px]" : "min-h-0"}`}>
         <div className="mb-1 flex items-center justify-between">
           <div role="tablist" aria-label="Eszköz részletei" className="flex min-w-0 gap-1">
             <Button role="tab" aria-selected={detailTab === "docs"} variant="ghost" size="sm" className={`h-6 px-1 font-display text-xs ${detailTab === "docs" ? "text-accent" : "text-muted-foreground"}`} onClick={() => setDetailTab("docs")}>Okmányok, vizsgák</Button>
             <Button role="tab" aria-selected={detailTab === "service"} variant="ghost" size="sm" className={`h-6 px-1 font-display text-xs ${detailTab === "service" ? "text-accent" : "text-muted-foreground"}`} onClick={() => setDetailTab("service")}>Szerviz</Button>
           </div>
-          {detailTab === "docs" && <Button variant="ghost" size="sm" className="h-6 px-1 text-primary" onClick={() => setDocumentOpen(true)}><Plus />Okmány</Button>}
+          {detailTab === "docs" && <Button disabled={closed} variant="ghost" size="sm" className="h-6 px-1 text-primary" onClick={() => setDocumentOpen(true)}><Plus />Okmány</Button>}
         </div>
-        {detailTab === "docs" && <StatusRow dev={dev} />}
+        {detailTab === "docs" && <fieldset disabled={closed}><StatusRow dev={dev} /></fieldset>}
         <div className="no-scrollbar flex min-h-0 flex-col gap-1 overflow-y-auto">
           {detailTab === "docs" && dev.docs.map((doc) => {
             const days = daysLeft(doc.expiry);
             const st = expiryState(days);
             const setDoc = (p: Partial<typeof doc>) => up({ docs: dev.docs.map((x) => (x.id === doc.id ? { ...x, ...p } : x)) });
             return (
-              <div key={doc.id} className={`grid grid-cols-[1fr_1fr_auto] items-center gap-1 rounded-md border-l-4 bg-secondary px-1.5 py-0.5 ${st === "expired" ? "border-l-destructive" : st === "soon" ? "border-l-warning" : st === "ok" ? "border-l-success" : "border-l-border"}`}>
+              <fieldset disabled={closed} key={doc.id} className={`grid grid-cols-[1fr_1fr_auto] items-center gap-1 rounded-md border-l-4 bg-secondary px-1.5 py-0.5 ${st === "expired" ? "border-l-destructive" : st === "soon" ? "border-l-warning" : st === "ok" ? "border-l-success" : "border-l-border"}`}>
                 <input aria-label="Okmány neve" value={doc.name} onChange={(e) => setDoc({ name: e.target.value })} className="col-span-2 min-w-0 bg-transparent text-xs font-semibold outline-none" />
                 <Button variant="ghost" size="icon" className="size-6 row-span-2 text-muted-foreground" aria-label="Okmány törlése" onClick={() => { if (confirm(`Törlöd az okmányt: ${doc.name}?`)) up({ docs: dev.docs.filter((x) => x.id !== doc.id) }); }}><X /></Button>
                 <input aria-label="Okmány száma" value={doc.number} placeholder="szám (nem kötelező)" onChange={(e) => setDoc({ number: e.target.value })} className="min-w-0 bg-transparent font-mono text-xs outline-none placeholder:text-muted-foreground" />
@@ -316,7 +316,7 @@ function Sheet({ dev, month, closed }: { dev: Device; month: number; closed: boo
                   <input aria-label="Okmány lejárata" type="date" value={doc.expiry} onChange={(e) => setDoc({ expiry: e.target.value })} className="w-full min-w-0 bg-transparent font-mono text-[11px] outline-none" />
                   {days != null && <div className={`text-[10px] ${st === "expired" ? "text-destructive" : st === "soon" ? "text-warning" : "text-muted-foreground"}`}>{days < 0 ? `lejárt ${-days} napja` : `${days} nap van hátra`}</div>}
                 </div>
-              </div>
+              </fieldset>
             );
           })}
           {detailTab === "service" && <ServicePanel dev={dev} closed={closed} />}
