@@ -15,3 +15,5 @@
 - The device and month selectors share `src/components/WheelPicker.tsx` — scroll, drag and reorder behaviour is changed there only, never duplicated in a route.
 - Excel import matches devices by normalized plate/identifier, never by row position, and must keep the user's manual device order untouched.
 - Number formatting (decimals per unit) follows the rules in project memory; do not introduce per-field overrides in components.
+- Optional service cycles live inside each device's annual snapshot, and warning/deadline ordering logic lives in a browser-safe pure module so thresholds can be tested without database access.
+- Keep all saved document types intact on load; names, numbers and dates are independent user-owned fields.

@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import seedData from "@/data/seed.json";
+import type { Service } from "./maintenance";
 
 export const MONTHS = ["Január","Február","Március","Április","Május","Június","Július","Augusztus","Szeptember","Október","November","December"];
 
@@ -17,6 +18,7 @@ export type Device = {
   yearlyAllowed: number;
   startOdometer: number;
   docs: Doc[];
+  services?: Service[];
   status?: "H" | "NH" | "S";
   note?: string;
   months: Record<number, Row[]>;
@@ -57,9 +59,7 @@ const listeners = new Set<() => void>();
 const emit = () => listeners.forEach((l) => l());
 const patchStore = (p: Partial<Store>) => { store = { ...store, ...p }; emit(); };
 
-const clean = (s: State): State => ({
-  devices: s.devices.map((d) => ({ ...d, docs: d.docs.filter((x) => !/biztosítás/i.test(x.name)) })),
-});
+const clean = (s: State): State => ({ devices: s.devices });
 
 async function fetchYears() {
   const { data, error } = await supabase.from("fleet_years").select("year, closed").order("year");
