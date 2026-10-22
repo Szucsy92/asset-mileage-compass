@@ -99,7 +99,7 @@ function Index() {
 
   return (
     <main className={`mx-auto flex h-[100svh] max-w-xl flex-col gap-2 overflow-hidden p-2 ${alerts.length ? "pb-11" : ""}`}>
-      <div className="flex items-center gap-1.5 text-xs">
+      <div className="relative z-40 flex shrink-0 items-center gap-1.5 text-xs">
         <div className="no-scrollbar flex gap-1 overflow-x-auto">
           {years.map((y) => (
             <button key={y.year} onClick={() => openYear(y.year)} className={`flex items-center gap-1 rounded-md border px-2 py-0.5 font-mono ${y.year === year ? "border-primary bg-primary/15 text-primary" : "text-muted-foreground"}`}>
