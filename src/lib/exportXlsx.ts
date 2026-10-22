@@ -7,7 +7,7 @@ export function exportWorkbook(devices: Device[], year: number) {
   const rows: (string | number)[][] = [["Rendszám / azonosító", "Típus", "Egység", "Hónap", "Bizonylat", "Óraállás", "Megtett", "Súlyozott", "Üzemanyag (l)", "Eltérés (l)"]];
   for (const d of devices)
     for (let m = 0; m < 12; m++)
-      for (const r of d.months[m] ?? []) rows.push([d.plate, d.type, d.unit, MONTHS[m], r.docNo, r.odometer, r.km, r.weightedKm, r.fuel, r.diff]);
+      for (const r of d.months[m] ?? []) rows.push([d.plate, d.type, d.unit, MONTHS[m] ?? "", r.docNo, r.odometer, r.km, r.weightedKm, r.fuel, r.diff]);
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), "Havi adatok");
 
   const sum: (string | number)[][] = [["Rendszám / azonosító", "Típus", "Egység", "Nyitó állás", "Okmányok"]];
