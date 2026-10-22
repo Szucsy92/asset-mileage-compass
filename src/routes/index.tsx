@@ -3,6 +3,9 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ChevronDown, Plus, Trash2, AlertTriangle, X, Lock, CalendarPlus, Upload } from "lucide-react";
 import { WheelPicker } from "@/components/WheelPicker";
+import { Button } from "@/components/ui/button";
+import { ServicePanel } from "@/components/ServicePanel";
+import { compareDeadlines } from "@/lib/maintenance";
 import {
   MONTHS, useFleet, actions, newDevice, latestUpTo, monthStats, cumulative, daysLeft, expiryState, uid, lastOdometer, openYear, closeYear,
   type Device, type Row,
@@ -91,11 +94,7 @@ function Index() {
 
   const alerts = devices.flatMap((d) =>
     d.docs.map((doc) => ({ d, doc, days: daysLeft(doc.expiry) })).filter((x) => x.days != null && x.days <= 30),
-  ).sort((a, b) => {
-    const ea = a.days! < 0, eb = b.days! < 0;
-    if (ea !== eb) return ea ? 1 : -1;
-    return ea ? b.days! - a.days! : a.days! - b.days!;
-  });
+  ).sort((a, b) => compareDeadlines(a.days ?? 0, b.days ?? 0));
 
   return (
     <main className={`mx-auto flex h-[100svh] max-w-xl flex-col gap-2 overflow-hidden p-2 ${alerts.length ? "pb-11" : ""}`}>
@@ -157,7 +156,7 @@ function Index() {
         </div>
       </div>
 
-      {dev ? <fieldset disabled={closed} className="flex min-h-0 flex-1 flex-col"><Sheet dev={dev} month={month} /></fieldset> : <p className="p-6 text-center text-muted-foreground">{status === "loading" ? "Betöltés…" : "Nincs eszköz."}</p>}
+      {dev ? <fieldset disabled={closed} className="flex min-h-0 flex-1 flex-col"><Sheet key={dev.id} dev={dev} month={month} closed={closed} /></fieldset> : <p className="p-6 text-center text-muted-foreground">{status === "loading" ? "Betöltés…" : "Nincs eszköz."}</p>}
       <ExpiryBar alerts={alerts} onPick={(id) => setDevId(id)} />
 
       {picker === "dev" && devices.length > 0 && (
@@ -190,7 +189,8 @@ function AddDialog({ onClose, onAdd }: { onClose: () => void; onAdd: (d: Device)
 
 const cell = "w-full min-w-0 bg-transparent px-0.5 font-mono text-[11px] outline-none text-right";
 
-function Sheet({ dev, month }: { dev: Device; month: number }) {
+function Sheet({ dev, month, closed }: { dev: Device; month: number; closed: boolean }) {
+  const [documentOpen, setDocumentOpen] = useState(false);
   const up = (p: Partial<Device>) => actions.update(dev.id, p);
   const latest = latestUpTo(dev, month);
   const inherited = latest != null && latest !== month;
@@ -295,7 +295,7 @@ function Sheet({ dev, month }: { dev: Device; month: number }) {
       <section className="flex min-h-0 flex-1 flex-col rounded-lg border bg-card p-1.5">
         <div className="mb-1 flex items-center justify-between">
           <h2 className="font-display text-xs font-bold uppercase tracking-wider">Okmányok, vizsgák</h2>
-          <button onClick={() => up({ docs: [...dev.docs, { id: uid(), name: "Új okmány", number: "", expiry: "" }] })} className="flex items-center gap-1 text-xs text-primary"><Plus className="size-3" />Okmány</button>
+          <Button variant="ghost" size="sm" className="h-6 px-1 text-primary" onClick={() => setDocumentOpen(true)}><Plus />Okmány</Button>
         </div>
         <StatusRow dev={dev} />
         <div className="no-scrollbar flex min-h-0 flex-col gap-1 overflow-y-auto">
@@ -304,21 +304,38 @@ function Sheet({ dev, month }: { dev: Device; month: number }) {
             const st = expiryState(days);
             const setDoc = (p: Partial<typeof doc>) => up({ docs: dev.docs.map((x) => (x.id === doc.id ? { ...x, ...p } : x)) });
             return (
-              <div key={doc.id} className={`grid grid-cols-[1.3fr_1fr_1.25fr_auto] items-center gap-1 rounded-md border-l-4 bg-secondary px-1.5 py-0.5 ${st === "expired" ? "border-l-destructive" : st === "soon" ? "border-l-warning" : st === "ok" ? "border-l-success" : "border-l-border"}`}>
-                <input value={doc.name} onChange={(e) => setDoc({ name: e.target.value })} className="min-w-0 bg-transparent text-xs font-semibold outline-none" />
-                <input value={doc.number} placeholder="szám" onChange={(e) => setDoc({ number: e.target.value })} className="min-w-0 bg-transparent font-mono text-xs outline-none placeholder:text-muted-foreground" />
+              <div key={doc.id} className={`grid grid-cols-[1fr_1fr_auto] items-center gap-1 rounded-md border-l-4 bg-secondary px-1.5 py-0.5 ${st === "expired" ? "border-l-destructive" : st === "soon" ? "border-l-warning" : st === "ok" ? "border-l-success" : "border-l-border"}`}>
+                <input aria-label="Okmány neve" value={doc.name} onChange={(e) => setDoc({ name: e.target.value })} className="col-span-2 min-w-0 bg-transparent text-xs font-semibold outline-none" />
+                <Button variant="ghost" size="icon" className="size-6 row-span-2 text-muted-foreground" aria-label="Okmány törlése" onClick={() => { if (confirm(`Törlöd az okmányt: ${doc.name}?`)) up({ docs: dev.docs.filter((x) => x.id !== doc.id) }); }}><X /></Button>
+                <input aria-label="Okmány száma" value={doc.number} placeholder="szám (nem kötelező)" onChange={(e) => setDoc({ number: e.target.value })} className="min-w-0 bg-transparent font-mono text-xs outline-none placeholder:text-muted-foreground" />
                 <div className="min-w-0">
-                  <input type="date" value={doc.expiry} onChange={(e) => setDoc({ expiry: e.target.value })} className="w-full min-w-0 bg-transparent font-mono text-[11px] outline-none" />
+                  <input aria-label="Okmány lejárata" type="date" value={doc.expiry} onChange={(e) => setDoc({ expiry: e.target.value })} className="w-full min-w-0 bg-transparent font-mono text-[11px] outline-none" />
                   {days != null && <div className={`text-[10px] ${st === "expired" ? "text-destructive" : st === "soon" ? "text-warning" : "text-muted-foreground"}`}>{days < 0 ? `lejárt ${-days} napja` : `${days} nap van hátra`}</div>}
                 </div>
-                <button aria-label="Okmány törlése" onClick={() => up({ docs: dev.docs.filter((x) => x.id !== doc.id) })} className="text-muted-foreground"><X className="size-3.5" /></button>
               </div>
             );
           })}
+          <ServicePanel dev={dev} closed={closed} />
         </div>
       </section>
+      {documentOpen && <DocumentDialog onClose={() => setDocumentOpen(false)} onAdd={(doc) => { up({ docs: [...dev.docs, doc] }); setDocumentOpen(false); }} />}
     </div>
   );
+}
+
+function DocumentDialog({ onClose, onAdd }: { onClose: () => void; onAdd: (doc: Device["docs"][number]) => void }) {
+  const [name, setName] = useState("");
+  const [number, setNumber] = useState("");
+  const [expiry, setExpiry] = useState("");
+  return <div className="fixed inset-0 z-50 flex items-start justify-center bg-background/40 px-3 pt-16 backdrop-blur-sm" onClick={onClose}>
+    <form role="dialog" aria-modal="true" aria-label="Új okmány" className="flex w-full max-w-sm flex-col gap-2 rounded-lg border bg-popover p-3" onClick={e => e.stopPropagation()} onSubmit={e => { e.preventDefault(); if (name.trim()) onAdd({ id: uid(), name: name.trim(), number: number.trim(), expiry }); }}>
+      <div className="flex items-center justify-between"><h2 className="font-display text-lg font-bold">Új okmány, vizsga</h2><Button type="button" variant="ghost" size="icon" aria-label="Okmányablak bezárása" onClick={onClose}><X /></Button></div>
+      <Field label="Megnevezés" type="text" value={name} onChange={setName} />
+      <Field label="Szám (nem kötelező)" type="text" value={number} onChange={setNumber} />
+      <Field label="Lejárat (nem kötelező)" type="date" value={expiry} onChange={setExpiry} />
+      <Button type="submit" disabled={!name.trim()}><Plus />Hozzáadás</Button>
+    </form>
+  </div>;
 }
 
 const STATUS = [
@@ -372,26 +389,26 @@ function ExpiryBar({ alerts, onPick }: { alerts: Alert[]; onPick: (id: string) =
     <>
       <span className="font-mono font-bold">{a.d.plate}</span> · {a.doc.name} ·{" "}
       <span className="font-mono">{a.doc.expiry.replaceAll("-", ".")}.</span>{" "}
-      ({a.days! < 0 ? `lejárt ${-a.days!} napja` : a.days === 0 ? "ma jár le" : `${a.days} nap`})
+      ({(a.days ?? 0) < 0 ? `lejárt ${-(a.days ?? 0)} napja` : a.days === 0 ? "ma jár le" : `${a.days} nap`})
     </>
   );
   return (
     <div className="fixed bottom-[max(0.5rem,env(safe-area-inset-bottom))] left-1/2 z-30 -translate-x-1/2">
-      <button onClick={() => setOpen(true)} className="glass-capsule flex items-center gap-1.5 rounded-full border border-destructive/60 px-4 py-1 text-xs font-semibold text-destructive">
+      <Button variant="ghost" aria-expanded={open} onClick={() => setOpen(true)} className="glass-capsule flex h-7 items-center gap-1.5 rounded-full border border-destructive/60 px-4 py-1 text-xs font-semibold text-destructive">
         <AlertTriangle className="size-3.5" />Lejáró vizsgák
         <span className="rounded-full bg-destructive px-1.5 text-[10px] font-bold text-destructive-foreground">{alerts.length}</span>
-      </button>
+      </Button>
       {open && createPortal(
         <>
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-          <div className="glass-bubble fixed bottom-2 left-1/2 z-50 w-[min(92vw,30rem)] origin-bottom overflow-hidden rounded-2xl border border-destructive/50 text-xs text-destructive">
+          <div role="dialog" aria-modal="true" aria-label="Lejáró vizsgák" className="glass-bubble fixed bottom-[max(0.5rem,env(safe-area-inset-bottom))] left-1/2 z-50 w-[min(92vw,30rem)] origin-bottom overflow-hidden rounded-2xl border border-destructive/50 text-xs text-destructive">
             <div className="flex items-center gap-1.5 border-b border-destructive/30 px-3 py-1.5 font-semibold">
               <AlertTriangle className="size-3.5" />Lejáró vizsgák ({alerts.length})
-              <button aria-label="Bezárás" onClick={() => setOpen(false)} className="ml-auto"><X className="size-4" /></button>
+              <Button variant="ghost" size="icon" aria-label="Bezárás" onClick={() => setOpen(false)} className="ml-auto size-6"><X /></Button>
             </div>
             <div className="no-scrollbar max-h-[45dvh] overflow-y-auto overscroll-contain">
               {alerts.map((a) => (
-                <button key={a.doc.id} onClick={() => { onPick(a.d.id); setOpen(false); }} className="block w-full truncate px-3 py-1.5 text-left odd:bg-destructive/10">{line(a)}</button>
+                <Button variant="ghost" key={`${a.d.id}-${a.doc.id}`} onClick={() => { onPick(a.d.id); setOpen(false); }} className={`block h-auto w-full whitespace-normal break-words px-3 py-2 text-left text-xs odd:bg-destructive/10 ${(a.days ?? 0) >= 0 ? "text-warning" : "text-destructive"}`}>{line(a)}</Button>
               ))}
             </div>
           </div>
