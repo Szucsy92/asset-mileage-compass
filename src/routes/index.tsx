@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { ChevronDown, Plus, Trash2, AlertTriangle, X, Lock, CalendarPlus, Upload } from "lucide-react";
+import { ChevronDown, Plus, Trash2, AlertTriangle, X, Lock, CalendarPlus, Upload, Download, FileSpreadsheet } from "lucide-react";
 import { WheelPicker } from "@/components/WheelPicker";
 import { Button } from "@/components/ui/button";
 import { ServicePanel } from "@/components/ServicePanel";
@@ -79,6 +79,7 @@ function Index() {
   const [month, setMonth] = useState(0);
   const [picker, setPicker] = useState<"dev" | "month" | null>(null);
   const [adding, setAdding] = useState(false);
+  const [xlsOpen, setXlsOpen] = useState(false);
 
   useEffect(() => { setMonth(new Date().getMonth()); }, []);
   useEffect(() => {
@@ -109,24 +110,42 @@ function Index() {
         <span className={`ml-auto text-[10px] ${status === "error" ? "text-destructive" : "text-muted-foreground"}`}>
           {status === "loading" ? "betöltés…" : status === "saving" ? "mentés…" : status === "error" ? "hiba – nincs mentve" : closed ? "lezárt év – csak olvasható" : "mentve"}
         </span>
-        {!closed && year != null && (
-          <label className="flex cursor-pointer items-center gap-1 rounded-md border px-2 py-0.5 text-muted-foreground">
-            <Upload className="size-3" />Excel
-            <input type="file" accept=".xlsx,.xls,.xlsm" className="hidden" onChange={async (e) => {
-              const f = e.target.files?.[0]; e.target.value = "";
-              if (!f) return;
-              try {
-                const { parseWorkbook, mergeImport } = await import("@/lib/importXlsx");
-                const parsed = await parseWorkbook(f);
-                if (!parsed.length) { alert("A fájlban nem találtam eszközt (Forgalmi rendszám blokkokat)."); return; }
-                if (!confirm(`${parsed.length} eszközt találtam. A havi adatok frissülnek a fájlból a ${year}. évben (okmányok, beállítások, sorrend megmaradnak). Folytatod?`)) return;
-                const keepNames = confirm("Nevek: az appban lévő azonosítók és típusok maradjanak?\n\nOK = app nevei maradnak (ajánlott)\nMégse = Excel nevei");
-                const r = mergeImport(devices, parsed, keepNames, (p, d) => confirm(`Excel: „${p.plate} · ${p.type}”\nEz azonos ezzel: „${d.plate} · ${d.type}”?\n\nOK = igen, frissítse\nMégse = új eszközként vegye fel`));
-                actions.replaceAll(r.devices);
-                alert(`Kész: ${r.updated} eszköz frissítve, ${r.added} új eszköz hozzáadva.`);
-              } catch { alert("A fájl beolvasása nem sikerült."); }
-            }} />
-          </label>
+        {year != null && (
+          <div className="relative">
+            <button aria-expanded={xlsOpen} onClick={() => setXlsOpen((o) => !o)} className="flex items-center gap-1 rounded-md border px-2 py-0.5 text-muted-foreground">
+              <FileSpreadsheet className="size-3" />Excel<ChevronDown className={`size-3 transition-transform ${xlsOpen ? "rotate-180" : ""}`} />
+            </button>
+            {xlsOpen && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setXlsOpen(false)} />
+                <div role="menu" className="absolute right-0 top-full z-50 mt-1 w-44 overflow-hidden rounded-lg border bg-popover p-1 shadow-2xl animate-in fade-in zoom-in-95">
+                  {!closed && (
+                    <label role="menuitem" className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-foreground hover:bg-secondary">
+                      <Upload className="size-4" />Feltöltés Excelből
+                      <input type="file" accept=".xlsx,.xls,.xlsm" className="hidden" onChange={async (e) => {
+                        const f = e.target.files?.[0]; e.target.value = ""; setXlsOpen(false);
+                        if (!f) return;
+                        try {
+                          const { parseWorkbook, mergeImport } = await import("@/lib/importXlsx");
+                          const parsed = await parseWorkbook(f);
+                          if (!parsed.length) { alert("A fájlban nem találtam eszközt (Forgalmi rendszám blokkokat)."); return; }
+                          if (!confirm(`${parsed.length} eszközt találtam. A havi adatok frissülnek a fájlból a ${year}. évben (okmányok, beállítások, sorrend megmaradnak). Folytatod?`)) return;
+                          const keepNames = confirm("Nevek: az appban lévő azonosítók és típusok maradjanak?\n\nOK = app nevei maradnak (ajánlott)\nMégse = Excel nevei");
+                          const r = mergeImport(devices, parsed, keepNames, (p, d) => confirm(`Excel: „${p.plate} · ${p.type}”\nEz azonos ezzel: „${d.plate} · ${d.type}”?\n\nOK = igen, frissítse\nMégse = új eszközként vegye fel`));
+                          actions.replaceAll(r.devices);
+                          alert(`Kész: ${r.updated} eszköz frissítve, ${r.added} új eszköz hozzáadva.`);
+                        } catch { alert("A fájl beolvasása nem sikerült."); }
+                      }} />
+                    </label>
+                  )}
+                  <button role="menuitem" onClick={async () => { setXlsOpen(false); const { exportWorkbook } = await import("@/lib/exportXlsx"); exportWorkbook(devices, year); }}
+                    className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-foreground hover:bg-secondary">
+                    <Download className="size-4" />Letöltés Excelbe
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
         )}
         {!closed && year != null && (
           <button onClick={() => { if (confirm(`${year} lezárása: az összes eszköz teljes éve elmentésre és zárolásra kerül (később visszanézhető), majd független ${year + 1}. év indul üres hónapokkal. Az eszközök, okmányok és a nyitó állás átkerülnek. Folytatod?`)) void closeYear(); }}

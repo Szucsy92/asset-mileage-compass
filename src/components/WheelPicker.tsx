@@ -3,7 +3,7 @@ import { Search, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 const ITEM = 46;
-const TOP = 2;
+const TOP = 0;
 /** Görgetési sebesség: sor / másodperc */
 const MIN_SPEED = 3, MAX_SPEED = 10;
 const LONG_PRESS = 450, TAP_SLOP = 8;
@@ -29,7 +29,7 @@ type Gesture = { y0: number; s0: number; tapPos: number; moved: boolean; timer?:
 export function WheelPicker({
   items, value, onSelect, onClose, searchable = false, onReorder,
 }: { items: string[]; value: number; onSelect: (i: number) => void; onClose: () => void; searchable?: boolean; onReorder?: ((from: number, to: number) => void) | undefined }) {
-  const VIS = 9, PAD = 6;
+  const VIS = 5, PAD = 4;
   const canReorder = !!onReorder;
   const ref = useRef<HTMLDivElement>(null);
   const [query, setQuery] = useState("");
@@ -145,7 +145,7 @@ export function WheelPicker({
     if (!g) return;
     const dy = e.clientY - g.y0;
     if (!g.moved && Math.abs(dy) > TAP_SLOP) { g.moved = true; clearTimeout(g.timer); setScrubbing(true); }
-    if (g.moved) setLens(Math.max(-1, Math.min(1, dy / ITEM)));
+    if (g.moved) setLens(Math.max(Math.min(1, scroll / ITEM) * -1, Math.min(1, dy / ITEM)));
   };
 
   const onUp = () => {
@@ -182,7 +182,7 @@ export function WheelPicker({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center bg-background/40 pt-10 backdrop-blur-[2px] animate-in fade-in" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-start justify-center bg-background/40 pt-10 animate-in fade-in" onClick={onClose}>
       <div role="dialog" aria-label={searchable ? "Technikai eszköz kiválasztása" : "Hónap kiválasztása"} aria-modal="true" className="relative w-[min(92vw,26rem)] rounded-xl border bg-popover p-2 shadow-2xl animate-in zoom-in-95 slide-in-from-top-4" onClick={(e) => e.stopPropagation()}>
         <div className="mb-1 flex items-center justify-between px-2"><span className="font-display text-sm font-semibold">{searchable ? "Technikai eszköz" : "Hónap"}</span><Button variant="ghost" size="icon" className="size-7" aria-label="Választó bezárása" onClick={onClose}><X /></Button></div>
         {searchable && (

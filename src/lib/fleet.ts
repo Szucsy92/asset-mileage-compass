@@ -87,6 +87,13 @@ async function start() {
     const open = years.filter((y) => !y.closed).at(-1) ?? years.at(-1)!;
     patchStore({ years });
     await openYear(open.year);
+    // Élő frissítés: más által beírt változások azonnal megjelennek
+    supabase.channel("fleet-years-live").on("postgres_changes", { event: "*", schema: "public", table: "fleet_years" }, async (p) => {
+      const row = p.new as { year?: number; closed?: boolean; data?: unknown };
+      if (p.eventType === "INSERT" || row.closed !== undefined) patchStore({ years: await fetchYears() });
+      if (row.year !== store.year || store.status === "saving" || !row.data) return;
+      patchStore({ closed: !!row.closed, devices: clean(row.data as State).devices });
+    }).subscribe();
   } catch { patchStore({ status: "error" }); }
 }
 function set(next: State) {
