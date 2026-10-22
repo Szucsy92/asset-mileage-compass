@@ -118,7 +118,7 @@ function Index() {
             {xlsOpen && (
               <>
                 <div className="fixed inset-0 z-40" onClick={() => setXlsOpen(false)} />
-                <div role="menu" className="absolute right-0 top-full z-50 mt-1 w-44 overflow-hidden rounded-lg border bg-popover p-1 shadow-2xl animate-in fade-in zoom-in-95">
+                <div role="menu" className="absolute right-0 top-full z-50 mt-1 w-44 overflow-hidden rounded-lg border bg-background p-1 shadow-2xl animate-in fade-in zoom-in-95">
                   {!closed && (
                     <label role="menuitem" className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-foreground hover:bg-secondary">
                       <Upload className="size-4" />Feltöltés Excelből
