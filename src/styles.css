@@ -125,16 +125,17 @@
 @keyframes bubble-pop { from { opacity: 0; transform: scale(0.3, 0.15); } to { opacity: 1; transform: none; } }
 
 .wheel-lens {
-  border-radius: 50%;
-  background: radial-gradient(ellipse, var(--lens-fill), transparent 75%);
-  box-shadow: 0 0 24px -4px var(--lens-halo), inset 0 0 12px -4px var(--glow);
-  transition: top 90ms ease-out;
+  border-radius: 0.75rem;
+  background: color-mix(in oklab, var(--foreground) 7%, transparent);
+  border: 1px solid color-mix(in oklab, var(--accent) 45%, transparent);
+  box-shadow: inset 0 1px 0 color-mix(in oklab, var(--foreground) 12%, transparent), 0 4px 14px -8px var(--accent);
+  backdrop-filter: blur(2px);
+  transition: transform 320ms cubic-bezier(.22,1.35,.38,1), opacity 160ms ease-out;
 }
+.wheel-lens.is-moving { transition: transform 70ms linear, opacity 160ms ease-out; }
 [role="dialog"][aria-label="Technikai eszköz kiválasztása"],
 [role="dialog"][aria-label="Hónap kiválasztása"] { background-color: var(--background); }
-.wheel-item { transition: transform 260ms cubic-bezier(.22,1.35,.38,1), opacity 160ms ease-out; }
-.wheel-item:hover { background: transparent; box-shadow: none; }
-.wheel-item:active { transform: none; }
+.wheel-item { position: relative; transition: transform 280ms cubic-bezier(.34,1.56,.64,1), opacity 160ms ease-out, color 120ms; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }

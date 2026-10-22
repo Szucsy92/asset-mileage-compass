@@ -4,6 +4,9 @@ import { Button } from "@/components/ui/button";
 
 const ITEM = 46;
 const TOP = 2;
+/** Görgetési sebesség: sor / másodperc */
+const MIN_SPEED = 3, MAX_SPEED = 10;
+const LONG_PRESS = 450, TAP_SLOP = 8;
 
 /** Ékezet-, kis/nagybetű-, szóköz- és kötőjel-független összehasonlítás */
 export const norm = (s: string) =>
@@ -14,43 +17,29 @@ function score(item: string, q: string) {
   if (!q) return 1;
   if (n.startsWith(q)) return 4;
   if (n.includes(q)) return 3;
-  // szavankénti egyezés (pl. "man 26" -> MAN 26480)
   const words = q.length ? item.toLowerCase().split(/\s+/) : [];
   if (words.some((w) => norm(w).startsWith(q))) return 2;
-  // betűsorrend (pl. "ha157" -> HA 00-157)
   let i = 0;
   for (const ch of n) if (ch === q[i]) i++;
   return i === q.length ? 1 : 0;
 }
 
+type Gesture = { y0: number; s0: number; tapPos: number; moved: boolean; timer?: ReturnType<typeof setTimeout> };
+
 export function WheelPicker({
   items, value, onSelect, onClose, searchable = false, onReorder,
 }: { items: string[]; value: number; onSelect: (i: number) => void; onClose: () => void; searchable?: boolean; onReorder?: ((from: number, to: number) => void) | undefined }) {
-  const [drag, setDrag] = useState<{ pos: number; y0: number; dy: number; s0: number } | null>(null);
-  const pointerY = useRef(0);
   const VIS = 9, PAD = 6;
-  const press = useRef<{ t: ReturnType<typeof setTimeout>; y: number } | null>(null);
-  const justDragged = useRef(false);
   const canReorder = !!onReorder;
   const ref = useRef<HTMLDivElement>(null);
   const [query, setQuery] = useState("");
   const [scroll, setScroll] = useState(0);
-  const [lensY, setLensY] = useState<number | null>(null);
-  const snapTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const activePointer = useRef(false);
-
-  const snap = () => {
-    const el = ref.current;
-    if (!el || activePointer.current || justDragged.current) return;
-    const pos = Math.max(0, Math.min(list.length - 1, Math.round(el.scrollTop / ITEM)));
-    el.scrollTo({ top: pos * ITEM, behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth" });
-  };
-
-  useEffect(() => {
-    const key = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
-    window.addEventListener("keydown", key);
-    return () => { window.removeEventListener("keydown", key); clearTimeout(snapTimer.current); if (press.current) clearTimeout(press.current.t); };
-  }, [onClose]);
+  const [lens, setLens] = useState(0); // indikátor eltolása sorokban, -1..1
+  const [scrubbing, setScrubbing] = useState(false);
+  const [drag, setDrag] = useState<{ pos: number; y0: number; dy: number; s0: number } | null>(null);
+  const pointerY = useRef(0);
+  const gesture = useRef<Gesture | null>(null);
+  const wheelTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   const list = useMemo(() => {
     const q = norm(query);
@@ -58,33 +47,67 @@ export function WheelPicker({
     return q ? all.sort((a, b) => b.s - a.s) : all;
   }, [items, query]);
 
+  const clampPos = (p: number) => Math.max(0, Math.min(list.length - 1, p));
+  const focus = clampPos(Math.round((scroll + lens * ITEM) / ITEM));
+  const reduced = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const centerOn = (pos: number) => {
+    ref.current?.scrollTo({ top: clampPos(pos) * ITEM, behavior: reduced() ? "instant" : "smooth" });
+    setLens(0);
+  };
+
   useEffect(() => {
     const pos = query ? 0 : Math.max(0, list.findIndex((x) => x.idx === value));
     ref.current?.scrollTo({ top: pos * ITEM });
     setScroll(pos * ITEM);
+    setLens(0);
   }, [query, value, list]);
 
   useEffect(() => {
-    if (!drag) return;
+    const key = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", key);
+    return () => { window.removeEventListener("keydown", key); clearTimeout(wheelTimer.current); if (gesture.current?.timer) clearTimeout(gesture.current.timer); };
+  }, [onClose]);
+
+  // Böngésző saját görgetésének tiltása érintésnél (mi vezéreljük a listát)
+  useEffect(() => {
     const el = ref.current;
     const block = (e: TouchEvent) => e.preventDefault();
     el?.addEventListener("touchmove", block, { passive: false });
     return () => el?.removeEventListener("touchmove", block);
-  }, [!!drag]);
+  }, []);
 
+  // Pörgetés: az indikátor max. 1 sort mozdul, azon túl a lista pörög alatta
+  useEffect(() => {
+    if (!scrubbing) return;
+    let raf = 0, last = performance.now();
+    const tick = (t: number) => {
+      const dt = Math.min(0.05, (t - last) / 1000); last = t;
+      const el = ref.current, g = gesture.current;
+      if (el && g) {
+        const dy = pointerY.current - g.y0;
+        const over = Math.abs(dy) - ITEM;
+        if (over > 0) {
+          const speed = Math.min(MAX_SPEED, MIN_SPEED + (over / ITEM) * 3);
+          el.scrollTop += Math.sign(dy) * speed * ITEM * dt;
+          setScroll(el.scrollTop);
+        }
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [scrubbing]);
+
+  // Áthelyezés közbeni automatikus görgetés a lista szélein
   useEffect(() => {
     if (!drag) return;
-    let raf = 0, t0 = performance.now();
-    const tick = (t: number) => {
+    let raf = 0;
+    const tick = () => {
       const el = ref.current;
       if (el) {
         const r = el.getBoundingClientRect(), zone = r.height * 0.12, y = pointerY.current;
         const depth = y < r.top + zone ? -(r.top + zone - y) / zone : y > r.bottom - zone ? (y - (r.bottom - zone)) / zone : 0;
-        if (depth) {
-          const accel = Math.min(2, 1 + (t - t0) / 3000);
-          el.scrollTop += Math.sign(depth) * Math.min(1, Math.abs(depth)) * 1.6 * accel;
-          setScroll(el.scrollTop);
-        } else t0 = t;
+        if (depth) { el.scrollTop += Math.sign(depth) * Math.min(1, Math.abs(depth)) * 3; setScroll(el.scrollTop); }
       }
       raf = requestAnimationFrame(tick);
     };
@@ -93,28 +116,69 @@ export function WheelPicker({
   }, [!!drag]);
 
   const rel = drag ? drag.dy + scroll - drag.s0 : 0;
-  const target = drag ? Math.max(0, Math.min(list.length - 1, drag.pos + Math.round(rel / ITEM))) : -1;
-  const startPress = (pos: number, y: number) => {
-    if (!canReorder || query) return;
-    press.current = { y, t: setTimeout(() => { setDrag({ pos, y0: y, dy: 0, s0: ref.current?.scrollTop ?? 0 }); }, 450) };
+  const target = drag ? clampPos(drag.pos + Math.round(rel / ITEM)) : -1;
+
+  const posAt = (clientY: number) => {
+    const el = ref.current!;
+    const y = clientY - el.getBoundingClientRect().top + el.scrollTop - TOP * ITEM;
+    return Math.floor(y / ITEM);
   };
-  const movePress = (y: number) => {
-    pointerY.current = y;
-    if (drag) { setDrag({ ...drag, dy: y - drag.y0 }); return; }
-    if (press.current && Math.abs(y - press.current.y) > 8) { clearTimeout(press.current.t); press.current = null; }
-  };
-  const endPress = () => {
-    if (press.current) { clearTimeout(press.current.t); press.current = null; }
-    if (drag) {
-      justDragged.current = true;
-      const from = list[drag.pos]?.idx, to = list[target]?.idx;
-      if (from !== undefined && to !== undefined && from !== to) onReorder?.(from, to);
-      setDrag(null);
+
+  const onDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return;
+    e.currentTarget.setPointerCapture(e.pointerId);
+    pointerY.current = e.clientY;
+    const tapPos = posAt(e.clientY);
+    const g: Gesture = { y0: e.clientY, s0: ref.current?.scrollTop ?? 0, tapPos, moved: false };
+    if (canReorder && !query && tapPos >= 0 && tapPos < list.length) {
+      g.timer = setTimeout(() => {
+        if (gesture.current === g && !g.moved) { setDrag({ pos: tapPos, y0: g.y0, dy: 0, s0: ref.current?.scrollTop ?? 0 }); navigator.vibrate?.(15); }
+      }, LONG_PRESS);
     }
-    activePointer.current = false;
-    setLensY(null);
-    clearTimeout(snapTimer.current);
-    snapTimer.current = setTimeout(snap, 160);
+    gesture.current = g;
+  };
+
+  const onMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    pointerY.current = e.clientY;
+    if (drag) { setDrag({ ...drag, dy: e.clientY - drag.y0 }); return; }
+    const g = gesture.current;
+    if (!g) return;
+    const dy = e.clientY - g.y0;
+    if (!g.moved && Math.abs(dy) > TAP_SLOP) { g.moved = true; clearTimeout(g.timer); setScrubbing(true); }
+    if (g.moved) setLens(Math.max(-1, Math.min(1, dy / ITEM)));
+  };
+
+  const onUp = () => {
+    const g = gesture.current;
+    gesture.current = null;
+    if (g?.timer) clearTimeout(g.timer);
+    if (drag) {
+      const from = list[drag.pos]?.idx, to = list[target]?.idx;
+      setDrag(null);
+      if (from !== undefined && to !== undefined && from !== to) onReorder?.(from, to);
+      return;
+    }
+    if (!g) return;
+    if (g.moved) { setScrubbing(false); centerOn(focus); return; }
+    // Koppintás: a középen lévő elemet választja ki, másikat középre hozza
+    const center = clampPos(Math.round(scroll / ITEM));
+    if (g.tapPos < 0 || g.tapPos >= list.length) return;
+    if (g.tapPos === center) { const it = list[center]; if (it) onSelect(it.idx); }
+    else centerOn(g.tapPos);
+  };
+
+  const onWheel = (e: React.WheelEvent<HTMLDivElement>) => {
+    const el = ref.current; if (!el) return;
+    el.scrollTop += e.deltaY; setScroll(el.scrollTop);
+    clearTimeout(wheelTimer.current);
+    wheelTimer.current = setTimeout(() => centerOn(Math.round(el.scrollTop / ITEM)), 140);
+  };
+
+  const onKey = (e: React.KeyboardEvent) => {
+    const center = clampPos(Math.round(scroll / ITEM));
+    if (e.key === "ArrowDown") { e.preventDefault(); centerOn(center + 1); }
+    if (e.key === "ArrowUp") { e.preventDefault(); centerOn(center - 1); }
+    if (e.key === "Enter") { const it = list[center]; if (it) onSelect(it.idx); }
   };
 
   return (
@@ -134,42 +198,54 @@ export function WheelPicker({
             {query && <span className="text-[10px] text-muted-foreground">{list.length} db</span>}
           </label>
         )}
-        {canReorder && !query && <div className="mb-1 text-center text-[10px] text-muted-foreground">Hosszan nyomva húzással áthelyezhető</div>}
+        <div className="mb-1 text-center text-[10px] text-muted-foreground">
+          Húzd az ujjad a pörgetéshez, koppints a kiemelt sorra{canReorder && !query ? " · hosszan nyomva áthelyezhető" : ""}
+        </div>
         <div className="relative">
-          <div style={{ top: (lensY ?? TOP * ITEM + ITEM / 2) - ITEM / 2, height: ITEM }} className="wheel-lens pointer-events-none absolute inset-x-3" />
+          <div
+            aria-hidden
+            style={{ top: TOP * ITEM, height: ITEM, transform: `translateY(${drag ? 0 : lens * ITEM}px)`, opacity: drag ? 0 : 1 }}
+            className={`wheel-lens pointer-events-none absolute inset-x-2 ${scrubbing ? "is-moving" : ""}`}
+          />
           <div
             ref={ref}
-            onScroll={() => { setScroll(ref.current?.scrollTop ?? 0); clearTimeout(snapTimer.current); snapTimer.current = setTimeout(snap, 160); }}
-            onPointerDown={(e) => { activePointer.current = true; pointerY.current = e.clientY; setLensY(e.clientY - e.currentTarget.getBoundingClientRect().top); justDragged.current = false; }}
-            onPointerMove={(e) => { movePress(e.clientY); if (activePointer.current) setLensY(Math.max(ITEM / 2, Math.min(e.currentTarget.clientHeight - ITEM / 2, e.clientY - e.currentTarget.getBoundingClientRect().top))); }}
-            onPointerUp={endPress}
-            onPointerCancel={endPress}
-            className={`no-scrollbar wheel-mask relative ${drag ? "overflow-hidden touch-none" : "overflow-y-scroll"}`}
-            style={{ height: `min(${ITEM * VIS}px, calc(100dvh - 9rem))`, WebkitOverflowScrolling: "touch", overscrollBehavior: "contain" }}
+            role="listbox"
+            tabIndex={0}
+            aria-activedescendant={list[focus] ? `wheel-opt-${focus}` : undefined}
+            onScroll={() => setScroll(ref.current?.scrollTop ?? 0)}
+            onPointerDown={onDown}
+            onPointerMove={onMove}
+            onPointerUp={onUp}
+            onPointerCancel={onUp}
+            onWheel={onWheel}
+            onKeyDown={onKey}
+            onContextMenu={(e) => e.preventDefault()}
+            className="no-scrollbar wheel-mask relative touch-none overflow-hidden outline-none"
+            style={{ height: `min(${ITEM * VIS}px, calc(100dvh - 9rem))`, overscrollBehavior: "contain" }}
           >
             <div style={{ height: ITEM * TOP }} />
             {list.length === 0 && <div className="py-2 text-center text-sm text-muted-foreground">Nincs találat</div>}
             {list.map((it, i) => {
-              const offset = (i * ITEM + TOP * ITEM + ITEM / 2 - scroll - (lensY ?? TOP * ITEM + ITEM / 2)) / ITEM;
-              const focus = Math.max(0, 1 - Math.abs(offset) / 2.5);
               const isDrag = drag?.pos === i;
+              const isFocus = !drag && i === focus;
+              const dist = Math.abs(i * ITEM - scroll - lens * ITEM) / ITEM;
               const shift = drag && !isDrag ? (i > drag.pos && i <= target ? -ITEM : i < drag.pos && i >= target ? ITEM : 0) : 0;
               return (
-                <Button variant="ghost"
+                <div
                   key={it.label}
-                  onPointerDown={(e) => { startPress(i, e.clientY); if (canReorder && !query) e.currentTarget.setPointerCapture(e.pointerId); }}
-                  onContextMenu={(e) => canReorder && e.preventDefault()}
-                  onClick={() => { if (justDragged.current) { justDragged.current = false; return; } onSelect(it.idx); }}
-                  className={`wheel-item flex w-full shrink-0 select-none items-center justify-center rounded-none px-3 font-display text-lg font-semibold ${Math.abs(offset) < 0.55 ? "text-accent" : "text-foreground"} ${isDrag ? "relative z-10 rounded-md bg-primary text-primary-foreground shadow-xl ring-2 ring-accent" : ""}`}
+                  id={`wheel-opt-${i}`}
+                  role="option"
+                  aria-selected={isFocus}
+                  className={`wheel-item flex w-full select-none items-center justify-center px-3 font-display text-lg font-semibold ${isFocus ? "is-focus text-accent" : "text-foreground"} ${isDrag ? "relative z-10 rounded-md bg-primary text-primary-foreground shadow-xl ring-2 ring-accent" : ""}`}
                   style={{
                     height: ITEM,
-                    transform: isDrag ? `translateY(${rel}px) scale(1.04)` : `translateY(${shift}px) scale(${1 + focus * 0.13})`,
-                    opacity: drag ? 1 : Math.max(0.3, 1 - Math.abs(offset) * 0.15),
+                    transform: isDrag ? `translateY(${rel}px) scale(1.04)` : `translateY(${shift}px) scale(${isFocus ? 1.16 : 1})`,
+                    opacity: drag ? 1 : Math.max(0.3, 1 - dist * 0.16),
                     WebkitTouchCallout: "none",
                   }}
                 >
                   <span className="block min-w-0 max-w-[90%] truncate">{it.label}</span>
-                </Button>
+                </div>
               );
             })}
             <div style={{ height: ITEM * PAD }} />
