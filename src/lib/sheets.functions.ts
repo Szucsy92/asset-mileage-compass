@@ -17,17 +17,17 @@ async function call(path: string, init?: RequestInit) {
 export const pushSheet = createServerFn({ method: "POST" })
   .inputValidator((d) => z.object({ year: z.number().int(), monthly: grid, devs: grid }).parse(d))
   .handler(async ({ data }) => {
-    const cur = await call("/values:batchGet?ranges=Havi adatok!A:K&ranges=Eszközök!A:F");
+    const cur = await call("/values:batchGet?ranges='Havi adatok'!A:K&ranges='Eszközök'!A:F");
     const [m, e] = (cur.valueRanges ?? []).map((v: { values?: unknown[][] }) => v.values ?? []);
     const keep = (rows: unknown[][]) => rows.slice(1).filter((r) => Number(r[0]) !== data.year) as (string | number)[][];
     const monthly = [data.monthly[0]!, ...keep(m ?? []), ...data.monthly.slice(1)];
     const devs = [data.devs[0]!, ...keep(e ?? []), ...data.devs.slice(1)];
-    await call("/values:batchClear", { method: "POST", body: JSON.stringify({ ranges: ["Havi adatok!A:K", "Eszközök!A:F"] }) });
-    await call("/values:batchUpdate", { method: "POST", body: JSON.stringify({ valueInputOption: "RAW", data: [{ range: "Havi adatok!A1", values: monthly }, { range: "Eszközök!A1", values: devs }] }) });
+    await call("/values:batchClear", { method: "POST", body: JSON.stringify({ ranges: ["'Havi adatok'!A:K", "'Eszközök'!A:F"] }) });
+    await call("/values:batchUpdate", { method: "POST", body: JSON.stringify({ valueInputOption: "RAW", data: [{ range: "'Havi adatok'!A1", values: monthly }, { range: "'Eszközök'!A1", values: devs }] }) });
     return { ok: true };
   });
 
 export const pullSheet = createServerFn({ method: "GET" }).handler(async () => {
-  const r = await call("/values/Havi adatok!A:K?valueRenderOption=UNFORMATTED_VALUE");
+  const r = await call("/values/'Havi adatok'!A:K?valueRenderOption=UNFORMATTED_VALUE");
   return { values: (r.values ?? []) as (string | number)[][] };
 });
