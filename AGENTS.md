@@ -18,3 +18,4 @@
 - Optional service cycles live inside each device's annual snapshot, and warning/deadline ordering logic lives in a browser-safe pure module so thresholds can be tested without database access.
 - Keep all saved document types intact on load; names, numbers and dates are independent user-owned fields.
 - Derive launcher icons from the supplied source artwork with a background matching the manifest launch color; provide separate safe-area maskable variants so operating-system cropping preserves the artwork.
+- Google Sheets is a mirror of the open year (auto-written after each save, rows keyed by year); reading it back merges by normalized plate and only replaces monthly rows, so order/docs stay user-owned.
