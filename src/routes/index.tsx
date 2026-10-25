@@ -142,6 +142,35 @@ function Index() {
                     className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-foreground hover:bg-secondary">
                     <Download className="size-4" />Letöltés Excelbe
                   </button>
+                  <div className="my-1 border-t" />
+                  <button role="menuitem" onClick={async () => { setXlsOpen(false); const { SHEET_URL } = await import("@/lib/sheetsLayout"); window.open(SHEET_URL, "_blank", "noopener"); }}
+                    className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-foreground hover:bg-secondary">
+                    <FileSpreadsheet className="size-4" />Google Táblázat megnyitása
+                  </button>
+                  {!closed && (
+                    <button role="menuitem" onClick={async () => {
+                      setXlsOpen(false);
+                      try {
+                        const [{ pullSheet }, { mergeSheetRows }] = await Promise.all([import("@/lib/sheets.functions"), import("@/lib/sheetsLayout")]);
+                        const { values } = await pullSheet();
+                        const r = mergeSheetRows(devices, values, year);
+                        if (!r.updated) { alert(`A Google Táblázatban nincs ${year}. évi adat.`); return; }
+                        if (!confirm(`${r.updated} eszköz havi adatai frissülnek a Google Táblázatból${r.unknown ? ` (${r.unknown} ismeretlen rendszám kimarad)` : ""}. Folytatod?`)) return;
+                        actions.replaceAll(r.devices);
+                      } catch { alert("A Google Táblázat beolvasása nem sikerült."); }
+                    }} className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-foreground hover:bg-secondary">
+                      <Upload className="size-4" />Frissítés Google Táblázatból
+                    </button>
+                  )}
+                  {!closed && (
+                    <button role="menuitem" onClick={async () => {
+                      setXlsOpen(false);
+                      const { scheduleSheetSync } = await import("@/lib/fleet");
+                      alert((await scheduleSheetSync(year, 0)) ? "Kiírva a Google Táblázatba." : "A Google Táblázatba írás nem sikerült.");
+                    }} className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-foreground hover:bg-secondary">
+                      <Download className="size-4" />Kiírás Google Táblázatba
+                    </button>
+                  )}
                 </div>
               </>
             )}

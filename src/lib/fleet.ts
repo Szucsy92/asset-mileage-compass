@@ -104,7 +104,22 @@ function set(next: State) {
   saveTimer = setTimeout(async () => {
     const { error } = await supabase.from("fleet_years").update({ data: { devices: store.devices } as never, updated_at: new Date().toISOString() }).eq("year", year);
     patchStore({ status: error ? "error" : "ready" });
+    if (!error) scheduleSheetSync(year);
   }, 600);
+}
+let sheetTimer: ReturnType<typeof setTimeout> | undefined;
+/** Google Táblázat tükrözése: pár másodperccel az utolsó mentés után kiírja az évet */
+export function scheduleSheetSync(year: number, delay = 5000) {
+  clearTimeout(sheetTimer);
+  return new Promise<boolean>((resolve) => {
+    sheetTimer = setTimeout(async () => {
+      try {
+        const [{ pushSheet }, { toSheetRows }] = await Promise.all([import("./sheets.functions"), import("./sheetsLayout")]);
+        await pushSheet({ data: { year, ...toSheetRows(store.devices, year) } });
+        resolve(true);
+      } catch (e) { console.error(e); resolve(false); }
+    }, delay);
+  });
 }
 const state = { get devices() { return store.devices; } };
 const EMPTY: Store = { devices: [], years: [], year: null, closed: false, status: "loading" };
