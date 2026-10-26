@@ -1,7 +1,10 @@
-import { MONTHS, newDevice, uid, type Device, type Row } from "@/lib/fleet";
+import { MONTHS, newDevice, uid, type Device, type Doc, type Row } from "@/lib/fleet";
+import type { Service } from "@/lib/maintenance";
 import { norm } from "@/components/WheelPicker";
+import { EXTRAS_MARKER } from "@/lib/exportXlsx";
 
-type Parsed = { plate: string; type: string; category: string; start: number | null; months: Record<number, Row[]> };
+type Extras = { docs: Doc[]; services: Service[]; note?: string; muted?: boolean; unit?: Device["unit"]; norm?: number; yearlyAllowed?: number; status?: Device["status"] };
+type Parsed = { plate: string; type: string; category: string; start: number | null; months: Record<number, Row[]>; extras?: Extras };
 
 const n = (v: unknown) => { const x = Number(v); return Number.isFinite(x) ? x : 0; };
 
