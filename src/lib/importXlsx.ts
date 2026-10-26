@@ -46,6 +46,30 @@ export async function parseWorkbook(file: File): Promise<Parsed[]> {
       d.months[month] = rows;
     }));
   });
+  // App-extra blokk beolvasása: a jelölő sor bárhol lehet (a táblázat alján, nem fix helyen)
+  for (const name of wb.SheetNames) {
+    const grid = XLSX.utils.sheet_to_json<unknown[]>(wb.Sheets[name]!, { header: 1, raw: true, defval: null });
+    const mi = grid.findIndex((row) => row?.some((c) => typeof c === "string" && c.trim() === EXTRAS_MARKER));
+    if (mi < 0) continue;
+    for (let r = mi + 2; r < grid.length; r++) {
+      const row = grid[r];
+      const plate = String(row?.[0] ?? "").trim();
+      const kind = String(row?.[1] ?? "").trim();
+      if (!plate || !kind) continue;
+      let d = byPlate.get(plate);
+      if (!d) { d = { plate, type: "", category: "", start: null, months: {} }; byPlate.set(plate, d); order.push(plate); }
+      const ex = (d.extras ??= { docs: [], services: [] });
+      const v1 = String(row?.[2] ?? "").trim(), v2 = String(row?.[3] ?? "").trim(), v3 = String(row?.[4] ?? "").trim(), v4 = String(row?.[5] ?? "").trim();
+      if (kind === "beállítás") {
+        ex.unit = v1 === "üó" ? "üó" : "km";
+        ex.norm = n(v2); ex.yearlyAllowed = n(v3);
+        if (v4 === "H" || v4 === "NH" || v4 === "S") ex.status = v4;
+      } else if (kind === "megjegyzés") ex.note = v1;
+      else if (kind === "némítva") ex.muted = true;
+      else if (kind === "okmány") ex.docs.push({ id: uid(), name: v1, number: v2, expiry: /^\d{4}-\d{2}-\d{2}$/.test(v3) ? v3 : "", hasNumber: v4[0] !== "0", hasDate: v4[1] !== "0" });
+      else if (kind === "szerviz") ex.services.push({ id: uid(), name: v1, interval: n(v2), lastReading: n(v3) });
+    }
+  }
   return order.map((p) => byPlate.get(p)!);
 }
 
