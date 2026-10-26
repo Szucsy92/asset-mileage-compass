@@ -354,16 +354,25 @@ function Sheet({ dev, month, closed }: { dev: Device; month: number; closed: boo
           {detailTab === "docs" && dev.docs.map((doc) => {
             const days = daysLeft(doc.expiry);
             const st = expiryState(days);
+            const showNumber = doc.hasNumber !== false;
+            const showDate = doc.hasDate !== false;
             const setDoc = (p: Partial<typeof doc>) => up({ docs: dev.docs.map((x) => (x.id === doc.id ? { ...x, ...p } : x)) });
             return (
               <fieldset disabled={closed} key={doc.id} className={`grid grid-cols-[1fr_1fr_auto] items-center gap-1 rounded-md border-l-4 bg-secondary px-1.5 py-0.5 ${st === "expired" ? "border-l-destructive" : st === "soon" ? "border-l-warning" : st === "ok" ? "border-l-success" : "border-l-border"}`}>
                 <input aria-label="Okmány neve" value={doc.name} onChange={(e) => setDoc({ name: e.target.value })} className="col-span-2 min-w-0 bg-transparent text-xs font-semibold outline-none" />
                 <Button variant="ghost" size="icon" className="size-6 row-span-2 text-muted-foreground" aria-label="Okmány törlése" onClick={() => { if (confirm(`Törlöd az okmányt: ${doc.name}?`)) up({ docs: dev.docs.filter((x) => x.id !== doc.id) }); }}><X /></Button>
-                <input aria-label="Okmány száma" value={doc.number} placeholder="szám (nem kötelező)" onChange={(e) => setDoc({ number: e.target.value })} className="min-w-0 bg-transparent font-mono text-xs outline-none placeholder:text-muted-foreground" />
-                <div className="min-w-0">
-                  <input aria-label="Okmány lejárata" type="date" value={doc.expiry} onChange={(e) => setDoc({ expiry: e.target.value })} className="w-full min-w-0 bg-transparent font-mono text-[11px] outline-none" />
-                  {days != null && <div className={`text-[10px] ${st === "expired" ? "text-destructive" : st === "soon" ? "text-warning" : "text-muted-foreground"}`}>{days < 0 ? `lejárt ${-days} napja` : `${days} nap van hátra`}</div>}
-                </div>
+                {showNumber ? (
+                  <input aria-label="Okmány száma" value={doc.number} placeholder="szám" onChange={(e) => setDoc({ number: e.target.value })} className="min-w-0 bg-transparent font-mono text-xs outline-none placeholder:text-muted-foreground" />
+                ) : <span />}
+                {showDate ? (
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-0.5">
+                      <input aria-label="Okmány lejárata" type="date" value={doc.expiry} onChange={(e) => setDoc({ expiry: e.target.value })} className="w-full min-w-0 bg-transparent font-mono text-[11px] outline-none" />
+                      {doc.expiry && <button aria-label="Dátum törlése" onClick={() => setDoc({ expiry: "" })} className="shrink-0 text-muted-foreground"><X className="size-3" /></button>}
+                    </div>
+                    {days != null && <div className={`text-[10px] ${st === "expired" ? "text-destructive" : st === "soon" ? "text-warning" : "text-muted-foreground"}`}>{days < 0 ? `lejárt ${-days} napja` : `${days} nap van hátra`}</div>}
+                  </div>
+                ) : <span />}
               </fieldset>
             );
           })}
@@ -379,12 +388,22 @@ function DocumentDialog({ onClose, onAdd }: { onClose: () => void; onAdd: (doc: 
   const [name, setName] = useState("");
   const [number, setNumber] = useState("");
   const [expiry, setExpiry] = useState("");
+  const [hasNumber, setHasNumber] = useState(true);
+  const [hasDate, setHasDate] = useState(true);
   return <div className="fixed inset-0 z-50 flex items-start justify-center bg-background/40 px-3 pt-16 backdrop-blur-sm" onClick={onClose}>
-    <form role="dialog" aria-modal="true" aria-label="Új okmány" className="flex w-full max-w-sm flex-col gap-2 rounded-lg border bg-popover p-3" onClick={e => e.stopPropagation()} onSubmit={e => { e.preventDefault(); if (name.trim()) onAdd({ id: uid(), name: name.trim(), number: number.trim(), expiry }); }}>
+    <form role="dialog" aria-modal="true" aria-label="Új okmány" className="flex w-full max-w-sm flex-col gap-2 rounded-lg border bg-popover p-3" onClick={e => e.stopPropagation()} onSubmit={e => { e.preventDefault(); if (name.trim()) onAdd({ id: uid(), name: name.trim(), number: hasNumber ? number.trim() : "", expiry: hasDate ? expiry : "", hasNumber, hasDate }); }}>
       <div className="flex items-center justify-between"><h2 className="font-display text-lg font-bold">Új okmány, vizsga</h2><Button type="button" variant="ghost" size="icon" aria-label="Okmányablak bezárása" onClick={onClose}><X /></Button></div>
       <Field label="Megnevezés" type="text" value={name} onChange={setName} />
-      <Field label="Szám (nem kötelező)" type="text" value={number} onChange={setNumber} />
-      <Field label="Lejárat (nem kötelező)" type="date" value={expiry} onChange={setExpiry} />
+      <label className="flex items-center gap-2 text-xs text-foreground">
+        <input type="checkbox" checked={hasNumber} onChange={(e) => setHasNumber(e.target.checked)} className="size-4 accent-primary" />
+        Van száma
+      </label>
+      {hasNumber && <Field label="Szám (nem kötelező)" type="text" value={number} onChange={setNumber} />}
+      <label className="flex items-center gap-2 text-xs text-foreground">
+        <input type="checkbox" checked={hasDate} onChange={(e) => setHasDate(e.target.checked)} className="size-4 accent-primary" />
+        Van lejárati dátuma
+      </label>
+      {hasDate && <Field label="Lejárat (nem kötelező)" type="date" value={expiry} onChange={setExpiry} />}
       <Button type="submit" disabled={!name.trim()}><Plus />Hozzáadás</Button>
     </form>
   </div>;

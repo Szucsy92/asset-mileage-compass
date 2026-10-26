@@ -5,7 +5,8 @@ import type { Service } from "./maintenance";
 
 export const MONTHS = ["Január","Február","Március","Április","Május","Június","Július","Augusztus","Szeptember","Október","November","December"];
 
-export type Doc = { id: string; name: string; number: string; expiry: string };
+/** Okmány: a hasNumber/hasDate kapcsolók döntik el, mely mezők láthatók (alapértelmezés: mindkettő) */
+export type Doc = { id: string; name: string; number: string; expiry: string; hasNumber?: boolean; hasDate?: boolean };
 /** Egy bejegyzés (menetlevél / okmány sor) */
 export type Row = { id: string; docNo: string; odometer: number; km: number; weightedKm: number; fuel: number; diff: number };
 export type Device = {
@@ -21,6 +22,8 @@ export type Device = {
   services?: Service[];
   status?: "H" | "NH" | "S";
   note?: string;
+  /** Értesítések némítása ennél az eszköznél */
+  muted?: boolean;
   months: Record<number, Row[]>;
 };
 type State = { devices: Device[] };
@@ -29,8 +32,8 @@ const KEY = "fleet-v2";
 export const uid = () => Math.random().toString(36).slice(2, 10);
 
 const defaultDocs = (): Doc[] => [
-  { id: uid(), name: "Forgalmi engedély", number: "", expiry: "" },
-  { id: uid(), name: "Műszaki vizsga", number: "", expiry: "" },
+  { id: uid(), name: "Forgalmi engedély", number: "", expiry: "", hasNumber: true, hasDate: false },
+  { id: uid(), name: "Műszaki vizsga", number: "", expiry: "", hasNumber: false, hasDate: true },
 ];
 
 export const newDevice = (plate: string, type: string): Device => ({
