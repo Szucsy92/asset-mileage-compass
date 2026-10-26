@@ -388,12 +388,22 @@ function DocumentDialog({ onClose, onAdd }: { onClose: () => void; onAdd: (doc: 
   const [name, setName] = useState("");
   const [number, setNumber] = useState("");
   const [expiry, setExpiry] = useState("");
+  const [hasNumber, setHasNumber] = useState(true);
+  const [hasDate, setHasDate] = useState(true);
   return <div className="fixed inset-0 z-50 flex items-start justify-center bg-background/40 px-3 pt-16 backdrop-blur-sm" onClick={onClose}>
-    <form role="dialog" aria-modal="true" aria-label="Új okmány" className="flex w-full max-w-sm flex-col gap-2 rounded-lg border bg-popover p-3" onClick={e => e.stopPropagation()} onSubmit={e => { e.preventDefault(); if (name.trim()) onAdd({ id: uid(), name: name.trim(), number: number.trim(), expiry }); }}>
+    <form role="dialog" aria-modal="true" aria-label="Új okmány" className="flex w-full max-w-sm flex-col gap-2 rounded-lg border bg-popover p-3" onClick={e => e.stopPropagation()} onSubmit={e => { e.preventDefault(); if (name.trim()) onAdd({ id: uid(), name: name.trim(), number: hasNumber ? number.trim() : "", expiry: hasDate ? expiry : "", hasNumber, hasDate }); }}>
       <div className="flex items-center justify-between"><h2 className="font-display text-lg font-bold">Új okmány, vizsga</h2><Button type="button" variant="ghost" size="icon" aria-label="Okmányablak bezárása" onClick={onClose}><X /></Button></div>
       <Field label="Megnevezés" type="text" value={name} onChange={setName} />
-      <Field label="Szám (nem kötelező)" type="text" value={number} onChange={setNumber} />
-      <Field label="Lejárat (nem kötelező)" type="date" value={expiry} onChange={setExpiry} />
+      <label className="flex items-center gap-2 text-xs text-foreground">
+        <input type="checkbox" checked={hasNumber} onChange={(e) => setHasNumber(e.target.checked)} className="size-4 accent-primary" />
+        Van száma
+      </label>
+      {hasNumber && <Field label="Szám (nem kötelező)" type="text" value={number} onChange={setNumber} />}
+      <label className="flex items-center gap-2 text-xs text-foreground">
+        <input type="checkbox" checked={hasDate} onChange={(e) => setHasDate(e.target.checked)} className="size-4 accent-primary" />
+        Van lejárati dátuma
+      </label>
+      {hasDate && <Field label="Lejárat (nem kötelező)" type="date" value={expiry} onChange={setExpiry} />}
       <Button type="submit" disabled={!name.trim()}><Plus />Hozzáadás</Button>
     </form>
   </div>;
