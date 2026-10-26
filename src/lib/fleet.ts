@@ -22,6 +22,8 @@ export type Device = {
   services?: Service[];
   status?: "H" | "NH" | "S";
   note?: string;
+  /** Értesítések némítása ennél az eszköznél */
+  muted?: boolean;
   months: Record<number, Row[]>;
 };
 type State = { devices: Device[] };
