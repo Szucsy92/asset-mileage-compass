@@ -1,9 +1,9 @@
 import { MONTHS, newDevice, uid, type Device, type Doc, type Row } from "@/lib/fleet";
 import type { Service } from "@/lib/maintenance";
 import { norm } from "@/components/WheelPicker";
-import { EXTRAS_MARKER } from "@/lib/exportXlsx";
+import { EXTRAS_MARKER } from "@/lib/workbookLayout";
 
-type Extras = { docs: Doc[]; services: Service[]; note?: string; muted?: boolean; unit?: Device["unit"]; norm?: number; yearlyAllowed?: number; status?: Device["status"] };
+type Extras = { docs: Doc[]; services: Service[]; note?: string; muted?: boolean; unit?: Device["unit"]; norm?: number; yearlyAllowed?: number; status?: Device["status"]; complete?: boolean };
 type Parsed = { plate: string; type: string; category: string; start: number | null; months: Record<number, Row[]>; extras?: Extras };
 
 const n = (v: unknown) => { const x = Number(v); return Number.isFinite(x) ? x : 0; };
@@ -19,28 +19,28 @@ export async function parseWorkbook(file: File): Promise<Parsed[]> {
     const mi = MONTHS.findIndex((m) => norm(m) === norm(name));
     const month = mi >= 0 ? mi : sheetIdx;
     if (month > 11) return;
-    const ws = wb.Sheets[name]!;
+    const ws = wb.Sheets[name];
+    if (!ws) return;
     const grid = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, raw: true, defval: null });
     const g = (r: number, c: number) => grid[r]?.[c] ?? null;
 
     grid.forEach((row, r) => row.forEach((cell, c) => {
-      if (typeof cell !== "string" || !cell.includes("rendszám")) return;
+      if (typeof cell !== "string" || !cell.toLowerCase().includes("rendszám")) return;
       const plate = String(g(r, c + 3) ?? "").trim();
       if (!plate || g(r + 9, c) !== "Sorszám") return;
-      let d = byPlate.get(plate);
+      let d = byPlate.get(norm(plate));
       if (!d) {
         d = { plate, type: String(g(r + 1, c + 3) ?? "").replace(/\s+/g, " ").trim(), category: String(g(r + 2, c + 3) ?? "").trim(), start: null, months: {} };
-        byPlate.set(plate, d); order.push(plate);
+        byPlate.set(norm(plate), d); order.push(norm(plate));
       }
       if (month === 0 || d.start == null) d.start = n(g(r + 12, c + 1));
       const rows: Row[] = [];
-      for (let rr = r + 13; rr <= r + 45; rr++) {
+      for (let rr = r + 13; rr <= r + 43; rr++) {
         if (typeof g(rr, c - 1) === "string") break;
         const s = g(rr, c);
-        if (typeof s === "string") break;
         const [km, tk, sk, f, m] = [1, 2, 3, 4, 5].map((k) => g(rr, c + k));
         if ([s, km, f].some((v) => v != null && v !== 0)) {
-          rows.push({ id: uid(), docNo: s == null ? "" : String(s), odometer: n(km), km: n(tk), weightedKm: n(sk), fuel: n(f), diff: n(m) });
+          rows.push({ id: uid(), docNo: s == null ? "" : String(s), odometer: n(km), km: n(tk), weightedKm: n(sk), fuel: n(f), diff: n(m), worksheetRow: rr - r - 13 });
         }
       }
       d.months[month] = rows;
@@ -48,7 +48,9 @@ export async function parseWorkbook(file: File): Promise<Parsed[]> {
   });
   // App-extra blokk beolvasása: a jelölő sor bárhol lehet (a táblázat alján, nem fix helyen)
   for (const name of wb.SheetNames) {
-    const grid = XLSX.utils.sheet_to_json<unknown[]>(wb.Sheets[name]!, { header: 1, raw: true, defval: null });
+    const ws = wb.Sheets[name];
+    if (!ws) continue;
+    const grid = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, raw: true, defval: null });
     const mi = grid.findIndex((row) => row?.some((c) => typeof c === "string" && c.trim() === EXTRAS_MARKER));
     if (mi < 0) continue;
     for (let r = mi + 2; r < grid.length; r++) {
@@ -56,11 +58,17 @@ export async function parseWorkbook(file: File): Promise<Parsed[]> {
       const plate = String(row?.[0] ?? "").trim();
       const kind = String(row?.[1] ?? "").trim();
       if (!plate || !kind) continue;
-      let d = byPlate.get(plate);
-      if (!d) { d = { plate, type: "", category: "", start: null, months: {} }; byPlate.set(plate, d); order.push(plate); }
+      let d = byPlate.get(norm(plate));
+      if (!d) { d = { plate, type: "", category: "", start: null, months: {} }; byPlate.set(norm(plate), d); order.push(norm(plate)); }
       const ex = (d.extras ??= { docs: [], services: [] });
       const v1 = String(row?.[2] ?? "").trim(), v2 = String(row?.[3] ?? "").trim(), v3 = String(row?.[4] ?? "").trim(), v4 = String(row?.[5] ?? "").trim();
-      if (kind === "beállítás") {
+      if (kind === "eszköz") { d.type = v1; d.category = v2; d.start = n(v3); }
+      else if (kind === "okmányok és szervizek") ex.complete = true;
+      else if (kind === "havi adat") {
+        const month = n(row?.[2]);
+        if (month >= 0 && month < 12) (d.months[month] ??= []).push({ id: uid(), docNo: String(row?.[3] ?? ""), odometer: n(row?.[4]), km: n(row?.[5]), weightedKm: n(row?.[6]), fuel: n(row?.[7]), diff: n(row?.[8]), ...(row?.[9] !== "" && row?.[9] != null ? { worksheetRow: n(row?.[9]) } : {}) });
+      }
+      else if (kind === "beállítás") {
         ex.unit = v1 === "üó" ? "üó" : "km";
         ex.norm = n(v2); ex.yearlyAllowed = n(v3);
         if (v4 === "H" || v4 === "NH" || v4 === "S") ex.status = v4;
@@ -70,7 +78,7 @@ export async function parseWorkbook(file: File): Promise<Parsed[]> {
       else if (kind === "szerviz") ex.services.push({ id: uid(), name: v1, interval: n(v2), lastReading: n(v3) });
     }
   }
-  return order.map((p) => byPlate.get(p)!);
+  return order.flatMap((p) => { const d = byPlate.get(p); return d ? [d] : []; });
 }
 
 /** Összefésülés: a fájlban szereplő eszközök minden hónapja frissül, okmányok/beállítások megmaradnak */
@@ -83,15 +91,18 @@ export function mergeImport(current: Device[], parsed: Parsed[], keepNames = tru
     if (i < 0) {
       const taken = new Set(parsed.map((x) => norm(x.plate)));
       const j = devices.findIndex((d) => !taken.has(norm(d.plate)) && similar(d.plate, p.plate));
-      if (j >= 0 && ask(p, devices[j]!)) i = j;
+      const candidate = devices[j];
+      if (candidate && ask(p, candidate)) i = j;
     }
     const months = Object.fromEntries(Object.entries(p.months).filter(([, r]) => r.length));
     if (i >= 0) {
-      const d = devices[i]!;
+      const d = devices[i];
+      if (!d) continue;
       devices[i] = { ...d, ...(keepNames ? {} : { plate: p.plate, type: p.type || d.type, category: p.category || d.category }), startOdometer: p.start ?? d.startOdometer, months };
       updated++;
     } else {
-      devices.push({ ...newDevice(p.plate, p.type), category: p.category, startOdometer: p.start ?? 0, months });
+      const ex = p.extras;
+      devices.push({ ...newDevice(p.plate, p.type), category: p.category, startOdometer: p.start ?? 0, months, ...(ex ? { unit: ex.unit ?? "km", norm: ex.norm ?? 0, yearlyAllowed: ex.yearlyAllowed ?? 0, ...(ex.status ? { status: ex.status } : {}), ...(ex.note != null ? { note: ex.note } : {}), ...(ex.muted != null ? { muted: ex.muted } : {}), ...(ex.complete || ex.docs.length ? { docs: ex.docs } : {}), services: ex.services } : {}) });
       added++;
     }
   }

@@ -2,13 +2,14 @@ import { useSyncExternalStore } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import seedData from "@/data/seed.json";
 import type { Service } from "./maintenance";
+import type { WorkbookRef } from "./workbookLayout";
 
 export const MONTHS = ["Január","Február","Március","Április","Május","Június","Július","Augusztus","Szeptember","Október","November","December"];
 
 /** Okmány: a hasNumber/hasDate kapcsolók döntik el, mely mezők láthatók (alapértelmezés: mindkettő) */
 export type Doc = { id: string; name: string; number: string; expiry: string; hasNumber?: boolean; hasDate?: boolean };
 /** Egy bejegyzés (menetlevél / okmány sor) */
-export type Row = { id: string; docNo: string; odometer: number; km: number; weightedKm: number; fuel: number; diff: number };
+export type Row = { id: string; docNo: string; odometer: number; km: number; weightedKm: number; fuel: number; diff: number; worksheetRow?: number };
 export type Device = {
   id: string;
   plate: string;
@@ -26,7 +27,7 @@ export type Device = {
   muted?: boolean;
   months: Record<number, Row[]>;
 };
-type State = { devices: Device[] };
+type State = { devices: Device[]; workbook?: WorkbookRef | undefined };
 
 const KEY = "fleet-v2";
 export const uid = () => Math.random().toString(36).slice(2, 10);
@@ -62,7 +63,7 @@ const listeners = new Set<() => void>();
 const emit = () => listeners.forEach((l) => l());
 const patchStore = (p: Partial<Store>) => { store = { ...store, ...p }; emit(); };
 
-const clean = (s: State): State => ({ devices: s.devices });
+const clean = (s: State): State => ({ devices: s.devices, workbook: s.workbook });
 
 async function fetchYears() {
   const { data, error } = await supabase.from("fleet_years").select("year, closed").order("year");
@@ -73,7 +74,7 @@ export async function openYear(year: number) {
   patchStore({ status: "loading" });
   const { data, error } = await supabase.from("fleet_years").select("year, closed, data").eq("year", year).single();
   if (error) { patchStore({ status: "error" }); return; }
-  patchStore({ year, closed: data.closed, devices: clean(data.data as unknown as State).devices, status: "ready" });
+  patchStore({ year, closed: data.closed, ...clean(data.data as unknown as State), status: "ready" });
 }
 async function start() {
   if (started || typeof window === "undefined") return;
@@ -87,7 +88,8 @@ async function start() {
       await supabase.from("fleet_years").insert({ year: y, closed: false, data: clean(initial) as never });
       years = await fetchYears();
     }
-    const open = years.filter((y) => !y.closed).at(-1) ?? years.at(-1)!;
+    const open = years.filter((y) => !y.closed).at(-1) ?? years.at(-1);
+    if (!open) throw new Error("Nincs megnyitható év");
     patchStore({ years });
     await openYear(open.year);
     // Élő frissítés: más által beírt változások azonnal megjelennek
@@ -95,34 +97,19 @@ async function start() {
       const row = p.new as { year?: number; closed?: boolean; data?: unknown };
       if (p.eventType === "INSERT" || row.closed !== undefined) patchStore({ years: await fetchYears() });
       if (row.year !== store.year || store.status === "saving" || !row.data) return;
-      patchStore({ closed: !!row.closed, devices: clean(row.data as State).devices });
+      patchStore({ closed: !!row.closed, ...clean(row.data as State) });
     }).subscribe();
   } catch { patchStore({ status: "error" }); }
 }
 function set(next: State) {
   if (store.closed || store.year == null) return;
-  patchStore({ devices: next.devices, status: "saving" });
+  patchStore({ devices: next.devices, workbook: next.workbook ?? store.workbook, status: "saving" });
   clearTimeout(saveTimer);
   const year = store.year;
   saveTimer = setTimeout(async () => {
-    const { error } = await supabase.from("fleet_years").update({ data: { devices: store.devices } as never, updated_at: new Date().toISOString() }).eq("year", year);
+    const { error } = await supabase.from("fleet_years").update({ data: clean(store) as never, updated_at: new Date().toISOString() }).eq("year", year);
     patchStore({ status: error ? "error" : "ready" });
-    if (!error) scheduleSheetSync(year);
   }, 600);
-}
-let sheetTimer: ReturnType<typeof setTimeout> | undefined;
-/** Google Táblázat tükrözése: pár másodperccel az utolsó mentés után kiírja az évet */
-export function scheduleSheetSync(year: number, delay = 5000) {
-  clearTimeout(sheetTimer);
-  return new Promise<boolean>((resolve) => {
-    sheetTimer = setTimeout(async () => {
-      try {
-        const [{ pushSheet }, { toSheetRows }] = await Promise.all([import("./sheets.functions"), import("./sheetsLayout")]);
-        await pushSheet({ data: { year, ...toSheetRows(store.devices, year) } });
-        resolve(true);
-      } catch (e) { console.error(e); resolve(false); }
-    }, delay);
-  });
 }
 const state = { get devices() { return store.devices; } };
 const EMPTY: Store = { devices: [], years: [], year: null, closed: false, status: "loading" };
@@ -140,7 +127,7 @@ export async function closeYear() {
   clearTimeout(saveTimer);
   const y = store.year;
   const devices = store.devices;
-  const { error } = await supabase.from("fleet_years").update({ data: { devices } as never, closed: true, closed_at: new Date().toISOString() }).eq("year", y);
+  const { error } = await supabase.from("fleet_years").update({ data: clean(store) as never, closed: true, closed_at: new Date().toISOString() }).eq("year", y);
   if (error) { patchStore({ status: "error" }); return; }
   const next: State = { devices: devices.map((d) => ({ ...d, startOdometer: lastOdometer(d), months: {} })) };
   const { error: e2 } = await supabase.from("fleet_years").insert({ year: y + 1, closed: false, data: next as never });
@@ -158,7 +145,7 @@ export function lastOdometer(d: Device, m = 11) {
 }
 
 export const actions = {
-  replaceAll(devices: Device[]) { set({ devices }); },
+  replaceAll(devices: Device[], workbook?: WorkbookRef) { set({ devices, workbook }); },
   move(from: number, to: number) {
     const list = [...state.devices];
     const [it] = list.splice(from, 1);

@@ -74,12 +74,13 @@ function Stat({ label, value, tone }: { label: string; value: string; tone?: "go
 }
 
 function Index() {
-  const { devices, years, year, closed, status } = useFleet();
+  const { devices, years, year, closed, status, workbook } = useFleet();
   const [devId, setDevId] = useState<string | null>(null);
   const [month, setMonth] = useState(0);
   const [picker, setPicker] = useState<"dev" | "month" | null>(null);
   const [adding, setAdding] = useState(false);
   const [xlsOpen, setXlsOpen] = useState(false);
+  const [excelBusy, setExcelBusy] = useState(false);
 
   useEffect(() => { setMonth(new Date().getMonth()); }, []);
   useEffect(() => {
@@ -112,65 +113,42 @@ function Index() {
         </span>
         {year != null && (
           <div className="relative">
-            <button aria-expanded={xlsOpen} onClick={() => setXlsOpen((o) => !o)} className="flex items-center gap-1 rounded-md border px-2 py-0.5 text-muted-foreground">
-              <FileSpreadsheet className="size-3" />Excel<ChevronDown className={`size-3 transition-transform ${xlsOpen ? "rotate-180" : ""}`} />
-            </button>
+            <Button variant="outline" disabled={excelBusy || status === "loading" || status === "saving"} aria-expanded={xlsOpen} onClick={() => setXlsOpen((o) => !o)} className="h-auto gap-1 px-2 py-0.5 text-xs text-muted-foreground">
+              <FileSpreadsheet className="size-3" />{excelBusy ? "Excel…" : "Excel"}<ChevronDown className={`size-3 transition-transform ${xlsOpen ? "rotate-180" : ""}`} />
+            </Button>
             {xlsOpen && (
               <>
                 <div className="fixed inset-0 z-40" onClick={() => setXlsOpen(false)} />
                 <div role="menu" className="absolute right-0 top-full z-50 mt-1 w-44 overflow-hidden rounded-lg border bg-background p-1 shadow-2xl animate-in fade-in zoom-in-95">
-                  {!closed && (
-                    <label role="menuitem" className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-foreground hover:bg-secondary">
-                      <Upload className="size-4" />Feltöltés Excelből
-                      <input type="file" accept=".xlsx,.xls,.xlsm" className="hidden" onChange={async (e) => {
-                        const f = e.target.files?.[0]; e.target.value = ""; setXlsOpen(false);
-                        if (!f) return;
-                        try {
-                          const { parseWorkbook, mergeImport } = await import("@/lib/importXlsx");
-                          const parsed = await parseWorkbook(f);
-                          if (!parsed.length) { alert("A fájlban nem találtam eszközt (Forgalmi rendszám blokkokat)."); return; }
-                          if (!confirm(`${parsed.length} eszközt találtam. A havi adatok frissülnek a fájlból a ${year}. évben (okmányok, beállítások, sorrend megmaradnak). Folytatod?`)) return;
-                          const keepNames = confirm("Nevek: az appban lévő azonosítók és típusok maradjanak?\n\nOK = app nevei maradnak (ajánlott)\nMégse = Excel nevei");
-                          const r = mergeImport(devices, parsed, keepNames, (p, d) => confirm(`Excel: „${p.plate} · ${p.type}”\nEz azonos ezzel: „${d.plate} · ${d.type}”?\n\nOK = igen, frissítse\nMégse = új eszközként vegye fel`));
-                          actions.replaceAll(r.devices);
-                          alert(`Kész: ${r.updated} eszköz frissítve, ${r.added} új eszköz hozzáadva.`);
-                        } catch { alert("A fájl beolvasása nem sikerült."); }
-                      }} />
-                    </label>
-                  )}
-                  <button role="menuitem" onClick={async () => { setXlsOpen(false); const { exportWorkbook } = await import("@/lib/exportXlsx"); exportWorkbook(devices, year); }}
-                    className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-foreground hover:bg-secondary">
+                  <Button role="menuitem" variant="ghost" disabled={closed} onClick={() => document.getElementById("excel-upload")?.click()} className="h-auto w-full justify-start px-2 py-2 text-xs">
+                    <Upload className="size-4" />Feltöltés Excelből
+                  </Button>
+                  <input id="excel-upload" type="file" accept=".xlsx" className="hidden" onChange={async (e) => {
+                    const f = e.target.files?.[0]; e.target.value = ""; setXlsOpen(false);
+                    if (!f || closed) return;
+                    setExcelBusy(true);
+                    try {
+                      const { parseWorkbook, mergeImport } = await import("@/lib/importXlsx");
+                      const parsed = await parseWorkbook(f);
+                      if (!parsed.length) { alert("A fájlban nem találtam eszközt (Forgalmi rendszám blokkokat)."); return; }
+                      if (!confirm(`${parsed.length} eszközt találtam. A havi adatok frissülnek a fájlból a ${year}. évben (okmányok, beállítások, sorrend megmaradnak). Folytatod?`)) return;
+                      const keepNames = confirm("Nevek: az appban lévő azonosítók és típusok maradjanak?\n\nOK = app nevei maradnak\nMégse = Excel nevei");
+                      const r = mergeImport(devices, parsed, keepNames, (p, d) => confirm(`Excel: „${p.plate} · ${p.type}”\nEz azonos ezzel: „${d.plate} · ${d.type}”?\n\nOK = igen, frissítse\nMégse = új eszközként vegye fel`));
+                      const { saveWorkbookTemplate } = await import("@/lib/workbookStorage");
+                      const ref = await saveWorkbookTemplate(f, year);
+                      actions.replaceAll(r.devices, ref);
+                      alert(`Kész: ${r.updated} eszköz frissítve, ${r.added} új eszköz hozzáadva.`);
+                    } catch (error) { alert(error instanceof Error ? error.message : "A fájl beolvasása nem sikerült."); }
+                    finally { setExcelBusy(false); }
+                  }} />
+                  <Button role="menuitem" variant="ghost" className="h-auto w-full justify-start px-2 py-2 text-xs" onClick={async () => {
+                    setXlsOpen(false); setExcelBusy(true);
+                    try { const { exportWorkbook } = await import("@/lib/exportXlsx"); await exportWorkbook(devices, year, workbook); }
+                    catch (error) { alert(error instanceof Error ? error.message : "Az Excel letöltése nem sikerült."); }
+                    finally { setExcelBusy(false); }
+                  }}>
                     <Download className="size-4" />Letöltés Excelbe
-                  </button>
-                  <div className="my-1 border-t" />
-                  <button role="menuitem" onClick={async () => { setXlsOpen(false); const { SHEET_URL } = await import("@/lib/sheetsLayout"); window.open(SHEET_URL, "_blank", "noopener"); }}
-                    className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-foreground hover:bg-secondary">
-                    <FileSpreadsheet className="size-4" />Google Táblázat megnyitása
-                  </button>
-                  {!closed && (
-                    <button role="menuitem" onClick={async () => {
-                      setXlsOpen(false);
-                      try {
-                        const [{ pullSheet }, { mergeSheetRows }] = await Promise.all([import("@/lib/sheets.functions"), import("@/lib/sheetsLayout")]);
-                        const { values } = await pullSheet();
-                        const r = mergeSheetRows(devices, values, year);
-                        if (!r.updated) { alert(`A Google Táblázatban nincs ${year}. évi adat.`); return; }
-                        if (!confirm(`${r.updated} eszköz havi adatai frissülnek a Google Táblázatból${r.unknown ? ` (${r.unknown} ismeretlen rendszám kimarad)` : ""}. Folytatod?`)) return;
-                        actions.replaceAll(r.devices);
-                      } catch { alert("A Google Táblázat beolvasása nem sikerült."); }
-                    }} className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-foreground hover:bg-secondary">
-                      <Upload className="size-4" />Frissítés Google Táblázatból
-                    </button>
-                  )}
-                  {!closed && (
-                    <button role="menuitem" onClick={async () => {
-                      setXlsOpen(false);
-                      const { scheduleSheetSync } = await import("@/lib/fleet");
-                      alert((await scheduleSheetSync(year, 0)) ? "Kiírva a Google Táblázatba." : "A Google Táblázatba írás nem sikerült.");
-                    }} className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-foreground hover:bg-secondary">
-                      <Download className="size-4" />Kiírás Google Táblázatba
-                    </button>
-                  )}
+                  </Button>
                 </div>
               </>
             )}

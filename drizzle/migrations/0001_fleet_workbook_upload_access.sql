@@ -1,0 +1,2 @@
+CREATE POLICY "Fleet workbook read" ON storage.objects FOR SELECT TO anon, authenticated USING (bucket_id = 'fleet-workbooks' AND name ~ '^[0-9]{4}/[a-f0-9-]+[.]xlsx$' AND EXISTS (SELECT 1 FROM public.fleet_years f WHERE f.year = split_part(name, '/', 1)::integer));
+CREATE POLICY "Fleet workbook upload open year" ON storage.objects FOR INSERT TO anon, authenticated WITH CHECK (bucket_id = 'fleet-workbooks' AND name ~ '^[0-9]{4}/[a-f0-9-]+[.]xlsx$' AND EXISTS (SELECT 1 FROM public.fleet_years f WHERE f.year = split_part(name, '/', 1)::integer AND NOT f.closed));

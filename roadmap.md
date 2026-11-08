@@ -8,10 +8,7 @@
 - [x] Verify saved data, interactions, small-screen layout and tests.
 
 ## Approved follow-up
-- [ ] Refine document fields and removable optional dates.
+- [x] Refine document fields and removable optional dates.
 - [ ] Preserve original Excel workbook and append dynamic app extras; retain extras on import.
-- [ ] Re-link Google Sheets connection in the new workspace (previous workspace links are gone).
-- [ ] Repair signed Android release workflow.
-- [ ] Add notification controls and per-device mute without hiding the bottom list.
-- [ ] Configure daily push and closed-app 06:00 Budapest checks (requires Firebase connection).
-- [ ] Replace Lovable-dependent shared storage and APK shell with independent Google solution (requires owner's Google deployment and access configuration).
+- [ ] Keep only Excel upload/download; remove Google mirror and retain shared app saves.
+- [x] Omit Firebase, daily push and notification controls as requested; retain the bottom bubble.

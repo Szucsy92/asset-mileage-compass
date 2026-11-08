@@ -18,6 +18,6 @@
 - Optional service cycles live inside each device's annual snapshot, and warning/deadline ordering logic lives in a browser-safe pure module so thresholds can be tested without database access.
 - Keep all saved document types intact on load; names, numbers and dates are independent user-owned fields.
 - Derive launcher icons from the supplied source artwork with a background matching the manifest launch color; provide separate safe-area maskable variants so operating-system cropping preserves the artwork.
-- Google Sheets is a mirror of the open year (auto-written after each save, rows keyed by year); reading it back merges by normalized plate and only replaces monthly rows, so order/docs stay user-owned.
+- Excel downloads edit the shared original XLSX with xlsx-populate, never rebuild it with SheetJS; SheetJS only locates blocks and reads cached values. Annual snapshots retain immutable workbook references; imported daily row offsets preserve placement and app-only extras follow the original used range.
 
 - Android APK is built only in GitHub Actions (manual run → signed release); the app shell loads the published site so data stays shared, and Capacitor packages are installed in CI, not in project deps.
