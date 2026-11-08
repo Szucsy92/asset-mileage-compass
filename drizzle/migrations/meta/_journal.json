@@ -8,6 +8,13 @@
       "when": 1792669911938,
       "tag": "0000_fleet_years_realtime",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1794115691002,
+      "tag": "0001_fleet_workbook_upload_access",
+      "breakpoints": true
     }
   ]
 }
