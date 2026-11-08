@@ -25,7 +25,7 @@ const asFile = (data: ArrayBuffer) => ({ arrayBuffer: async () => data }) as Fil
 describe("Original workbook", () => {
   it("keeps formulas, merged cells and daily position and appends after the dynamically extended range", async () => {
     const blob = await buildWorkbook([device], 2026, template(92));
-    const buffer = await blob.arrayBuffer();
+    const buffer = await new Promise<ArrayBuffer>((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(reader.result as ArrayBuffer); reader.onerror = reject; reader.readAsArrayBuffer(blob); });
     const wb = XLSX.read(buffer, { type: "array" });
     expect(wb.SheetNames).toEqual(["Január"]);
     expect(wb.Sheets.Január?.D44?.f).toBe("C44-C13");

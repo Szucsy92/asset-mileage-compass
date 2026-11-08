@@ -27,7 +27,7 @@ export type Device = {
   muted?: boolean;
   months: Record<number, Row[]>;
 };
-type State = { devices: Device[]; workbook?: WorkbookRef };
+type State = { devices: Device[]; workbook?: WorkbookRef | undefined };
 
 const KEY = "fleet-v2";
 export const uid = () => Math.random().toString(36).slice(2, 10);

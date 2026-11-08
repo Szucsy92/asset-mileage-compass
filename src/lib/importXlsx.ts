@@ -102,7 +102,7 @@ export function mergeImport(current: Device[], parsed: Parsed[], keepNames = tru
       updated++;
     } else {
       const ex = p.extras;
-      devices.push({ ...newDevice(p.plate, p.type), category: p.category, startOdometer: p.start ?? 0, months, ...(ex ? { unit: ex.unit ?? "km", norm: ex.norm ?? 0, yearlyAllowed: ex.yearlyAllowed ?? 0, status: ex.status, note: ex.note, muted: ex.muted, ...(ex.complete || ex.docs.length ? { docs: ex.docs } : {}), services: ex.services } : {}) });
+      devices.push({ ...newDevice(p.plate, p.type), category: p.category, startOdometer: p.start ?? 0, months, ...(ex ? { unit: ex.unit ?? "km", norm: ex.norm ?? 0, yearlyAllowed: ex.yearlyAllowed ?? 0, ...(ex.status ? { status: ex.status } : {}), ...(ex.note != null ? { note: ex.note } : {}), ...(ex.muted != null ? { muted: ex.muted } : {}), ...(ex.complete || ex.docs.length ? { docs: ex.docs } : {}), services: ex.services } : {}) });
       added++;
     }
   }
