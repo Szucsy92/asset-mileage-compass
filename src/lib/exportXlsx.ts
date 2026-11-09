@@ -15,6 +15,12 @@ export async function buildWorkbook(devices: Device[], year: number, source: Arr
     const sourceSheet = sourceBook.Sheets[name], sheet = wb.sheet(name);
     if (!sourceSheet || !sheet) continue;
     const grid = sheetGrid(sourceSheet);
+    for (const [address] of Object.entries(sourceSheet)) {
+      if (address.startsWith("!")) continue;
+      const pos = XLSX.utils.decode_cell(address), cell = sheet.cell(pos.r + 1, pos.c + 1);
+      const value = cell.value();
+      if (typeof value === "number" && !Number.isFinite(value) && !cell.formula()) cell.value(undefined);
+    }
     const blocks = findBlocks(grid);
     const matched = new Set<string>();
     for (const block of blocks) {
