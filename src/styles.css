@@ -36,6 +36,12 @@
 }
 
 :root {
+  /* Teljes képernyős (edge-to-edge) elrendezés: az állapot- és navigációs sáv alatt a háttér folytatódik.
+     --sat/--sab/--sal/--sar a natív Android héjtól jön (MainActivity), env() a böngészőben. */
+  --safe-top: max(env(safe-area-inset-top, 0px), var(--sat, 0px));
+  --safe-bottom: max(env(safe-area-inset-bottom, 0px), var(--sab, 0px));
+  --safe-left: max(env(safe-area-inset-left, 0px), var(--sal, 0px));
+  --safe-right: max(env(safe-area-inset-right, 0px), var(--sar, 0px));
   --radius: 0.6rem;
   --background: #0b0d1b;
   --foreground: oklch(0.96 0.01 290);
