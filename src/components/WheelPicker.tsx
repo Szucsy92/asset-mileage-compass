@@ -48,7 +48,10 @@ export function WheelPicker({
   }, [items, query]);
 
   const clampPos = (p: number) => Math.max(0, Math.min(list.length - 1, p));
-  const focus = clampPos(Math.round((scroll + lens * ITEM) / ITEM));
+  // A lencse nem lóghat a lista (látható ablak) teteje fölé, és nem mehet az utolsó elem alá
+  const maxLens = Math.min(1, Math.max(0, list.length - 1 - scroll / ITEM));
+  const lensEff = Math.max(0, Math.min(maxLens, lens));
+  const focus = clampPos(Math.round((scroll + lensEff * ITEM) / ITEM));
   const reduced = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   const centerOn = (pos: number) => {
     ref.current?.scrollTo({ top: clampPos(pos) * ITEM, behavior: reduced() ? "instant" : "smooth" });
@@ -85,7 +88,7 @@ export function WheelPicker({
       const el = ref.current, g = gesture.current;
       if (el && g) {
         const dy = pointerY.current - g.y0;
-        const over = Math.abs(dy) - ITEM;
+        const over = Math.abs(dy) - (dy < 0 ? 0 : ITEM);
         if (over > 0) {
           const speed = Math.min(MAX_SPEED, MIN_SPEED + (over / ITEM) * 3);
           el.scrollTop += Math.sign(dy) * speed * ITEM * dt;
@@ -145,7 +148,7 @@ export function WheelPicker({
     if (!g) return;
     const dy = e.clientY - g.y0;
     if (!g.moved && Math.abs(dy) > TAP_SLOP) { g.moved = true; clearTimeout(g.timer); setScrubbing(true); }
-    if (g.moved) setLens(Math.max(Math.min(1, scroll / ITEM) * -1, Math.min(1, dy / ITEM)));
+    if (g.moved) setLens(Math.max(0, Math.min(1, dy / ITEM)));
   };
 
   const onUp = () => {
@@ -204,7 +207,7 @@ export function WheelPicker({
         <div className="relative">
           <div
             aria-hidden
-            style={{ top: TOP * ITEM, height: ITEM, transform: `translateY(${drag ? 0 : lens * ITEM}px)`, opacity: !drag && scrubbing ? 1 : 0 }}
+            style={{ top: TOP * ITEM, height: ITEM, transform: `translateY(${drag ? 0 : lensEff * ITEM}px)`, opacity: !drag && scrubbing ? 1 : 0 }}
             className={`wheel-lens pointer-events-none absolute inset-x-2 ${scrubbing ? "is-moving" : ""}`}
           />
           <div
@@ -228,7 +231,7 @@ export function WheelPicker({
             {list.map((it, i) => {
               const isDrag = drag?.pos === i;
               const isFocus = !drag && i === focus;
-              const dist = Math.abs(i * ITEM - scroll - lens * ITEM) / ITEM;
+              const dist = Math.abs(i * ITEM - scroll - lensEff * ITEM) / ITEM;
               const shift = drag && !isDrag ? (i > drag.pos && i <= target ? -ITEM : i < drag.pos && i >= target ? ITEM : 0) : 0;
               return (
                 <div
