@@ -36,6 +36,7 @@ describe("Original workbook", () => {
     expect(wb.Sheets['Január']?.["!merges"]).toEqual([{ s: { r: 0, c: 4 }, e: { r: 0, c: 6 } }]);
     const parsed = await parseWorkbook(asFile(buffer));
     expect(parsed[0]?.months[0]?.[0]).toMatchObject({ docNo: "26", worksheetRow: 30 });
+    expect(parsed[0]?.months[0]?.[0]?.km).toBe(3976);
     const restored = mergeImport([], parsed).devices[0];
     expect(restored?.docs[0]).toMatchObject({ expiry: "2027-01-01", hasNumber: false, hasDate: true });
     expect(restored?.services?.[0]?.interval).toBe(10000);

@@ -64,7 +64,8 @@ export async function buildWorkbook(devices: Device[], year: number, source: Arr
       extras.push([d.plate, "okmányok és szervizek", "teljes"]);
       for (const doc of d.docs) extras.push([d.plate, "okmány", doc.name, doc.number, doc.expiry, `${doc.hasNumber === false ? 0 : 1}${doc.hasDate === false ? 0 : 1}`]);
       for (const service of d.services ?? []) extras.push([d.plate, "szerviz", service.name, service.interval, service.lastReading]);
-      if (!matched.has(d.id)) for (const row of d.months[m] ?? []) extras.push([d.plate, "havi adat", m, row.docNo, row.odometer, row.km, row.weightedKm, row.fuel, row.diff, row.worksheetRow ?? ""]);
+      extras.push([d.plate, "havi adatok", m]);
+      for (const row of d.months[m] ?? []) extras.push([d.plate, "havi adat", m, row.docNo, row.odometer, row.km, row.weightedKm, row.fuel, row.diff, row.worksheetRow ?? ""]);
     }
     extras.forEach((row, r) => row.forEach((value, c) => sheet.cell(last + 2 + r, c + 1).value(value)));
   }
