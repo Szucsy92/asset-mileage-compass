@@ -31,7 +31,7 @@ describe("Original workbook", () => {
     expect(wb.Sheets['Január']?.['D44']?.f).toBe("C44-C13");
     expect(wb.Sheets['Január']?.['D45']?.f).toBe("SUM(D14:D44)");
     expect(wb.Sheets['Január']?.['C44']?.v).toBe(56193);
-    expect(wb.Sheets['Január']?.['C14']).toBeUndefined();
+    expect(wb.Sheets['Január']?.['C14']?.v).toBeUndefined();
     expect(wb.Sheets['Január']?.['A94']?.v).toBe("APP-ADATOK");
     expect(wb.Sheets['Január']?.["!merges"]).toEqual([{ s: { r: 0, c: 4 }, e: { r: 0, c: 6 } }]);
     const parsed = await parseWorkbook(asFile(buffer));

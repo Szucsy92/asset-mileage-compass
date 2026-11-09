@@ -11,7 +11,7 @@ const n = (v: unknown) => { const x = Number(v); return Number.isFinite(x) ? x :
 /** Az eredeti nyilvántartó táblázat beolvasása (havi lapok, eszköz-blokkok) */
 export async function parseWorkbook(file: File): Promise<Parsed[]> {
   const XLSX = await import("xlsx");
-  const wb = XLSX.read(await file.arrayBuffer(), { type: "array" });
+  const wb = XLSX.read(await file.arrayBuffer(), { type: "array", sheetStubs: true });
   const byPlate = new Map<string, Parsed>();
   const order: string[] = [];
 
@@ -40,7 +40,8 @@ export async function parseWorkbook(file: File): Promise<Parsed[]> {
         const s = g(rr, c);
         const [km, tk, sk, f, m] = [1, 2, 3, 4, 5].map((k) => g(rr, c + k));
         if ([s, km, f].some((v) => v != null && v !== 0)) {
-          rows.push({ id: uid(), docNo: s == null ? "" : String(s), odometer: n(km), km: n(tk), weightedKm: n(sk), fuel: n(f), diff: n(m), worksheetRow: rr - r - 13 });
+          const previous = rows.at(-1)?.odometer ?? n(g(r + 12, c + 1));
+          rows.push({ id: uid(), docNo: s == null ? "" : String(s), odometer: n(km), km: tk == null ? Math.max(0, n(km) - previous) : n(tk), weightedKm: n(sk), fuel: n(f), diff: n(m), worksheetRow: rr - r - 13 });
         }
       }
       d.months[month] = rows;

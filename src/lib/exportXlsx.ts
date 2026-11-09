@@ -22,7 +22,11 @@ export async function buildWorkbook(devices: Device[], year: number, source: Arr
       if (!d) continue;
       matched.add(d.id);
       // Formula cells remain formulas, including the monthly carry-forward totals.
-      const write = (r: number, c: number, value: unknown) => { const cell = sheet.cell(r, c); if (!cell.formula()) cell.value(value); };
+      const write = (r: number, c: number, value: unknown) => {
+        const address = XLSX.utils.encode_cell({ r: r - 1, c: c - 1 });
+        const cell = sheet.cell(r, c);
+        if (!sourceSheet[address]?.f && !cell.formula()) cell.value(value);
+      };
       write(block.row + 1, block.col + 3, d.type);
       write(block.row + 2, block.col + 3, d.category);
       write(block.row + 3, block.col + 3, d.yearlyAllowed || undefined);
