@@ -81,6 +81,14 @@ jobs:
           fi
           cat "$RES/mipmap-anydpi-v26/ic_launcher.xml"
 
+      - name: Apply edge-to-edge native shell
+        run: |
+          # Teljes képernyős héj: átlátszó állapot- és navigációs sáv (native/MainActivity.java)
+          DIR=android/app/src/main/java/hu/technikaieszkoz/nyilvantartas
+          test -d "$DIR" || { echo "Hiba: nincs $DIR"; find android/app/src/main/java -type f; exit 1; }
+          cp native/MainActivity.java "$DIR/MainActivity.java"
+          grep -n "class MainActivity" "$DIR/MainActivity.java"
+
       - name: Set version
         working-directory: android
         run: |
