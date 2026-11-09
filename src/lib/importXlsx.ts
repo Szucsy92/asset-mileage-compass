@@ -48,7 +48,9 @@ export async function parseWorkbook(file: File): Promise<Parsed[]> {
     }));
   });
   // App-extra blokk beolvasása: a jelölő sor bárhol lehet (a táblázat alján, nem fix helyen)
+  const extrasSeen = new Set<string>();
   for (const name of wb.SheetNames) {
+    const sheetExtras = new Set<string>();
     const ws = wb.Sheets[name];
     if (!ws) continue;
     const grid = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, raw: true, defval: null });
@@ -59,6 +61,8 @@ export async function parseWorkbook(file: File): Promise<Parsed[]> {
       const plate = String(row?.[0] ?? "").trim();
       const kind = String(row?.[1] ?? "").trim();
       if (!plate || !kind) continue;
+      if (kind !== "havi adat" && extrasSeen.has(norm(plate))) continue;
+      sheetExtras.add(norm(plate));
       let d = byPlate.get(norm(plate));
       if (!d) { d = { plate, type: "", category: "", start: null, months: {} }; byPlate.set(norm(plate), d); order.push(norm(plate)); }
       const ex = (d.extras ??= { docs: [], services: [] });
@@ -78,6 +82,7 @@ export async function parseWorkbook(file: File): Promise<Parsed[]> {
       else if (kind === "okmány") ex.docs.push({ id: uid(), name: v1, number: v2, expiry: /^\d{4}-\d{2}-\d{2}$/.test(v3) ? v3 : "", hasNumber: v4[0] !== "0", hasDate: v4[1] !== "0" });
       else if (kind === "szerviz") ex.services.push({ id: uid(), name: v1, interval: n(v2), lastReading: n(v3) });
     }
+    for (const plate of sheetExtras) extrasSeen.add(plate);
   }
   return order.flatMap((p) => { const d = byPlate.get(p); return d ? [d] : []; });
 }
