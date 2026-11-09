@@ -43,12 +43,58 @@ jobs:
             --splashBackgroundColor '#130a24' --splashBackgroundColorDark '#130a24'
           npx cap sync android
 
+      - name: Fix adaptive icon background
+        run: |
+          # A capacitor-assets az adaptív ikon XML-ekben a @mipmap/ic_launcher_background
+          # képre hivatkozik, de egyszínű háttérnél nem készít ilyen fájlt (AAPT hiba).
+          # Ezért egyszínű színerőforrást adunk, és a hivatkozásokat arra irányítjuk.
+          RES=android/app/src/main/res
+          mkdir -p "$RES/values" "$RES/mipmap-anydpi-v26"
+          cat > "$RES/values/ic_launcher_background.xml" <<'XML'
+          <?xml version="1.0" encoding="utf-8"?>
+          <resources>
+              <color name="ic_launcher_background">#130a24</color>
+          </resources>
+          XML
+          # a heredoc behúzását eltávolítjuk, hogy az XML-deklaráció az első sorban legyen
+          sed -i 's/^ *//' "$RES/values/ic_launcher_background.xml"
+
+          if ls $RES/mipmap-*/ic_launcher_foreground.png >/dev/null 2>&1; then
+            FG="@mipmap/ic_launcher_foreground"
+          else
+            FG="@drawable/ic_launcher_foreground"
+          fi
+          echo "Előtér: $FG"
+
+          for n in ic_launcher ic_launcher_round; do
+            printf '%s\n' \
+              '<?xml version="1.0" encoding="utf-8"?>' \
+              '<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">' \
+              '    <background android:drawable="@color/ic_launcher_background"/>' \
+              "    <foreground android:drawable=\"$FG\"/>" \
+              '</adaptive-icon>' > "$RES/mipmap-anydpi-v26/$n.xml"
+          done
+
+          # Ellenőrzés: nem maradhat hivatkozás hiányzó mipmap háttérre
+          if grep -rn "mipmap/ic_launcher_background" "$RES"; then
+            echo "Hiba: maradt hivatkozás a hiányzó mipmap/ic_launcher_background-ra"; exit 1
+          fi
+          cat "$RES/mipmap-anydpi-v26/ic_launcher.xml"
+
+      - name: Set version
+        working-directory: android
+        run: |
+          # versionCode: perc alapú, mindig nő -> az Android a régi APK fölé telepíti az újat
+          sed -i -E "s/versionCode[[:space:]]+[0-9]+/versionCode $CODE/; s/versionName[[:space:]]+\"[^\"]*\"/versionName \"$VER\"/" app/build.gradle
+          grep -E "versionCode|versionName" app/build.gradle
+          grep -q "versionCode $CODE" app/build.gradle || { echo "Hiba: a versionCode nem íródott át"; exit 1; }
+          grep -q "versionName \"$VER\"" app/build.gradle || { echo "Hiba: a versionName nem íródott át"; exit 1; }
+
       - name: Build release APK
         working-directory: android
         run: |
-          sed -i "s/versionCode 1$/versionCode $CODE/; s/versionName \"1.0\"/versionName \"$VER\"/" app/build.gradle
           chmod +x gradlew
-          ./gradlew assembleRelease
+          ./gradlew assembleRelease --stacktrace
 
       - name: Sign APK
         env:
