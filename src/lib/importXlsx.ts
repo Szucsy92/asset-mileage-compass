@@ -11,7 +11,7 @@ const n = (v: unknown) => { const x = Number(v); return Number.isFinite(x) ? x :
 /** Az eredeti nyilvántartó táblázat beolvasása (havi lapok, eszköz-blokkok) */
 export async function parseWorkbook(file: File): Promise<Parsed[]> {
   const XLSX = await import("xlsx");
-  const wb = XLSX.read(await file.arrayBuffer(), { type: "array" });
+  const wb = XLSX.read(await file.arrayBuffer(), { type: "array", sheetStubs: true });
   const byPlate = new Map<string, Parsed>();
   const order: string[] = [];
 
@@ -40,14 +40,21 @@ export async function parseWorkbook(file: File): Promise<Parsed[]> {
         const s = g(rr, c);
         const [km, tk, sk, f, m] = [1, 2, 3, 4, 5].map((k) => g(rr, c + k));
         if ([s, km, f].some((v) => v != null && v !== 0)) {
-          rows.push({ id: uid(), docNo: s == null ? "" : String(s), odometer: n(km), km: n(tk), weightedKm: n(sk), fuel: n(f), diff: n(m), worksheetRow: rr - r - 13 });
+          let previous = rows.at(-1)?.odometer ?? n(g(r + 12, c + 1));
+          if (g(r + 12, c + 1) == null && !rows.length) {
+            previous = d.start ?? 0;
+            for (let prior = month - 1; prior >= 0; prior--) { const last = d.months[prior]?.at(-1); if (last) { previous = last.odometer; break; } }
+          }
+          rows.push({ id: uid(), docNo: s == null ? "" : String(s), odometer: n(km), km: tk == null ? Math.max(0, n(km) - previous) : n(tk), weightedKm: n(sk), fuel: n(f), diff: n(m), worksheetRow: rr - r - 13 });
         }
       }
       d.months[month] = rows;
     }));
   });
   // App-extra blokk beolvasása: a jelölő sor bárhol lehet (a táblázat alján, nem fix helyen)
+  const extrasSeen = new Set<string>();
   for (const name of wb.SheetNames) {
+    const sheetExtras = new Set<string>();
     const ws = wb.Sheets[name];
     if (!ws) continue;
     const grid = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, raw: true, defval: null });
@@ -58,12 +65,15 @@ export async function parseWorkbook(file: File): Promise<Parsed[]> {
       const plate = String(row?.[0] ?? "").trim();
       const kind = String(row?.[1] ?? "").trim();
       if (!plate || !kind) continue;
+      if (kind !== "havi adat" && kind !== "havi adatok" && extrasSeen.has(norm(plate))) continue;
+      sheetExtras.add(norm(plate));
       let d = byPlate.get(norm(plate));
       if (!d) { d = { plate, type: "", category: "", start: null, months: {} }; byPlate.set(norm(plate), d); order.push(norm(plate)); }
       const ex = (d.extras ??= { docs: [], services: [] });
       const v1 = String(row?.[2] ?? "").trim(), v2 = String(row?.[3] ?? "").trim(), v3 = String(row?.[4] ?? "").trim(), v4 = String(row?.[5] ?? "").trim();
       if (kind === "eszköz") { d.type = v1; d.category = v2; d.start = n(v3); }
       else if (kind === "okmányok és szervizek") ex.complete = true;
+      else if (kind === "havi adatok") { const month = n(row?.[2]); if (month >= 0 && month < 12) d.months[month] = []; }
       else if (kind === "havi adat") {
         const month = n(row?.[2]);
         if (month >= 0 && month < 12) (d.months[month] ??= []).push({ id: uid(), docNo: String(row?.[3] ?? ""), odometer: n(row?.[4]), km: n(row?.[5]), weightedKm: n(row?.[6]), fuel: n(row?.[7]), diff: n(row?.[8]), ...(row?.[9] !== "" && row?.[9] != null ? { worksheetRow: n(row?.[9]) } : {}) });
@@ -77,6 +87,7 @@ export async function parseWorkbook(file: File): Promise<Parsed[]> {
       else if (kind === "okmány") ex.docs.push({ id: uid(), name: v1, number: v2, expiry: /^\d{4}-\d{2}-\d{2}$/.test(v3) ? v3 : "", hasNumber: v4[0] !== "0", hasDate: v4[1] !== "0" });
       else if (kind === "szerviz") ex.services.push({ id: uid(), name: v1, interval: n(v2), lastReading: n(v3) });
     }
+    for (const plate of sheetExtras) extrasSeen.add(plate);
   }
   return order.flatMap((p) => { const d = byPlate.get(p); return d ? [d] : []; });
 }

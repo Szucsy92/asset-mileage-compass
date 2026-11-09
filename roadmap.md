@@ -9,6 +9,6 @@
 
 ## Approved follow-up
 - [x] Refine document fields and removable optional dates.
-- [ ] Preserve original Excel workbook and append dynamic app extras; retain extras on import.
-- [ ] Keep only Excel upload/download; remove Google mirror and retain shared app saves.
+- [x] Preserve original Excel workbook and append dynamic app extras; retain extras on import.
+- [x] Keep only Excel upload/download; remove Google mirror and retain shared app saves.
 - [x] Omit Firebase, daily push and notification controls as requested; retain the bottom bubble.
