@@ -44,7 +44,7 @@ export function UpdateBanner() {
 
   if (!latest) return null;
   return (
-    <div className="fixed inset-x-3 top-3 z-50 flex items-center gap-3 rounded-2xl border border-border bg-card p-3 text-sm text-card-foreground shadow-lg">
+    <div className="fixed inset-x-3 top-[calc(0.75rem+var(--safe-top))] z-50 flex items-center gap-3 rounded-2xl border border-border bg-card p-3 text-sm text-card-foreground shadow-lg">
       <span className="flex-1">Újabb változat érhető el ({latest.version}).</span>
       <a
         href={latest.url}

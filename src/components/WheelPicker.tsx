@@ -182,7 +182,7 @@ export function WheelPicker({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center bg-background/40 pt-10 animate-in fade-in" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-start justify-center bg-background/40 pt-[calc(2.5rem+var(--safe-top))] animate-in fade-in" onClick={onClose}>
       <div role="dialog" aria-label={searchable ? "Technikai eszköz kiválasztása" : "Hónap kiválasztása"} aria-modal="true" className="relative w-[min(92vw,26rem)] rounded-xl border bg-popover p-2 shadow-2xl animate-in zoom-in-95 slide-in-from-top-4" onClick={(e) => e.stopPropagation()}>
         <div className="mb-1 flex items-center justify-between px-2"><span className="font-display text-sm font-semibold">{searchable ? "Technikai eszköz" : "Hónap"}</span><Button variant="ghost" size="icon" className="size-7" aria-label="Választó bezárása" onClick={onClose}><X /></Button></div>
         {searchable && (
@@ -204,7 +204,7 @@ export function WheelPicker({
         <div className="relative">
           <div
             aria-hidden
-            style={{ top: TOP * ITEM, height: ITEM, transform: `translateY(${drag ? 0 : lens * ITEM}px)`, opacity: drag ? 0 : 1 }}
+            style={{ top: TOP * ITEM, height: ITEM, transform: `translateY(${drag ? 0 : lens * ITEM}px)`, opacity: !drag && scrubbing ? 1 : 0 }}
             className={`wheel-lens pointer-events-none absolute inset-x-2 ${scrubbing ? "is-moving" : ""}`}
           />
           <div
@@ -221,7 +221,7 @@ export function WheelPicker({
             onKeyDown={onKey}
             onContextMenu={(e) => e.preventDefault()}
             className="no-scrollbar wheel-mask relative touch-none overflow-hidden outline-none"
-            style={{ height: `min(${ITEM * VIS}px, calc(100dvh - 9rem))`, overscrollBehavior: "contain" }}
+            style={{ height: `min(${ITEM * VIS}px, calc(100dvh - 9rem - var(--safe-top) - var(--safe-bottom)))`, overscrollBehavior: "contain" }}
           >
             <div style={{ height: ITEM * TOP }} />
             {list.length === 0 && <div className="py-2 text-center text-sm text-muted-foreground">Nincs találat</div>}
