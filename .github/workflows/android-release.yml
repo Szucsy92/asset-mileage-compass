@@ -94,6 +94,17 @@ jobs:
         working-directory: android
         run: |
           chmod +x gradlew
+          # A Gradle-letöltés alapértelmezett időkorlátja 10 mp; hálózati ingadozásnál elbukik.
+          sed -i -E 's/^networkTimeout=.*/networkTimeout=120000/' gradle/wrapper/gradle-wrapper.properties
+          grep -n networkTimeout gradle/wrapper/gradle-wrapper.properties || echo "networkTimeout=120000" >> gradle/wrapper/gradle-wrapper.properties
+          # Újrapróbálás: a Gradle-disztribúció letöltése legfeljebb 3-szor
+          for i in 1 2 3; do
+            ./gradlew --version && break
+            echo "Gradle letöltés sikertelen ($i/3), újrapróbálás..."
+            rm -rf ~/.gradle/wrapper/dists
+            sleep 15
+            [ "$i" = 3 ] && exit 1
+          done
           ./gradlew assembleRelease --stacktrace
 
       - name: Sign APK
