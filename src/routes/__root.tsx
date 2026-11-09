@@ -78,9 +78,16 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
   head: () => ({
     meta: [
       { charSet: "utf-8" },
-      { name: "viewport", content: "width=device-width, initial-scale=1" },
+      { name: "viewport", content: "width=device-width, initial-scale=1, viewport-fit=cover" },
       { title: "Technikaieszköz_nyilvántartás" },
       { name: "theme-color", content: "#130a24" },
+    ],
+    scripts: [
+      {
+        // Natív Android héj: a rendszersávok méretét CSS változókba teszi (--sat/--sab/--sal/--sar)
+        children:
+          "(function(){function a(){try{var n=window.NativeInsets;if(!n)return;var s=document.documentElement.style;s.setProperty('--sat',n.top()+'px');s.setProperty('--sab',n.bottom()+'px');s.setProperty('--sal',n.left()+'px');s.setProperty('--sar',n.right()+'px');}catch(e){}}window.__applyInsets=a;a();window.addEventListener('resize',a);window.addEventListener('orientationchange',a);})();",
+      },
     ],
     links: [
       {

@@ -99,7 +99,7 @@ function Index() {
   ).sort((a, b) => compareDeadlines(a.days ?? 0, b.days ?? 0));
 
   return (
-    <main className={`mx-auto flex h-[100svh] max-w-xl flex-col gap-2 overflow-hidden p-2 ${alerts.length ? "pb-11" : ""}`}>
+    <main className={`mx-auto flex h-[100svh] max-w-xl flex-col gap-2 overflow-hidden pl-[calc(0.5rem+var(--safe-left))] pr-[calc(0.5rem+var(--safe-right))] pt-[calc(0.5rem+var(--safe-top))] ${alerts.length ? "pb-[calc(2.75rem+var(--safe-bottom))]" : "pb-[calc(0.5rem+var(--safe-bottom))]"}`}>
       <div className="relative z-40 flex shrink-0 items-center gap-1.5 text-xs">
         <div className="no-scrollbar flex gap-1 overflow-x-auto">
           {years.map((y) => (
@@ -201,7 +201,7 @@ function AddDialog({ onClose, onAdd }: { onClose: () => void; onAdd: (d: Device)
   const [plate, setPlate] = useState("");
   const [type, setType] = useState("");
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center bg-background/40 pt-24 backdrop-blur-[2px] animate-in fade-in" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-start justify-center bg-background/40 pt-[calc(6rem+var(--safe-top))] backdrop-blur-[2px] animate-in fade-in" onClick={onClose}>
       <form onClick={(e) => e.stopPropagation()} onSubmit={(e) => { e.preventDefault(); if (plate.trim()) onAdd(newDevice(plate.trim(), type.trim())); }}
         className="flex w-80 flex-col gap-2 rounded-xl border bg-popover p-3 animate-in zoom-in-95">
         <div className="font-display text-lg font-bold">Új technikai eszköz</div>
@@ -368,7 +368,7 @@ function DocumentDialog({ onClose, onAdd }: { onClose: () => void; onAdd: (doc: 
   const [expiry, setExpiry] = useState("");
   const [hasNumber, setHasNumber] = useState(true);
   const [hasDate, setHasDate] = useState(true);
-  return <div className="fixed inset-0 z-50 flex items-start justify-center bg-background/40 px-3 pt-16 backdrop-blur-sm" onClick={onClose}>
+  return <div className="fixed inset-0 z-50 flex items-start justify-center bg-background/40 px-3 pt-[calc(4rem+var(--safe-top))] backdrop-blur-sm" onClick={onClose}>
     <form role="dialog" aria-modal="true" aria-label="Új okmány" className="flex w-full max-w-sm flex-col gap-2 rounded-lg border bg-popover p-3" onClick={e => e.stopPropagation()} onSubmit={e => { e.preventDefault(); if (name.trim()) onAdd({ id: uid(), name: name.trim(), number: hasNumber ? number.trim() : "", expiry: hasDate ? expiry : "", hasNumber, hasDate }); }}>
       <div className="flex items-center justify-between"><h2 className="font-display text-lg font-bold">Új okmány, vizsga</h2><Button type="button" variant="ghost" size="icon" aria-label="Okmányablak bezárása" onClick={onClose}><X /></Button></div>
       <Field label="Megnevezés" type="text" value={name} onChange={setName} />
@@ -442,7 +442,7 @@ function ExpiryBar({ alerts, onPick }: { alerts: Alert[]; onPick: (id: string) =
     </>
   );
   return (
-    <div className="fixed bottom-[max(0.5rem,env(safe-area-inset-bottom))] left-1/2 z-30 -translate-x-1/2">
+    <div className="fixed bottom-[max(0.5rem,var(--safe-bottom))] left-1/2 z-30 -translate-x-1/2">
       <Button variant="ghost" aria-expanded={open} onClick={() => setOpen(true)} className="glass-capsule flex h-7 items-center gap-1.5 rounded-full border border-destructive/60 px-4 py-1 text-xs font-semibold text-destructive">
         <AlertTriangle className="size-3.5" />Lejáró vizsgák
         <span className="rounded-full bg-destructive px-1.5 text-[10px] font-bold text-destructive-foreground">{alerts.length}</span>
@@ -450,7 +450,7 @@ function ExpiryBar({ alerts, onPick }: { alerts: Alert[]; onPick: (id: string) =
       {open && createPortal(
         <>
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-          <div role="dialog" aria-modal="true" aria-label="Lejáró vizsgák" className="glass-bubble fixed bottom-[max(0.5rem,env(safe-area-inset-bottom))] left-1/2 z-50 w-[min(92vw,30rem)] origin-bottom overflow-hidden rounded-2xl border border-destructive/50 text-xs text-destructive">
+          <div role="dialog" aria-modal="true" aria-label="Lejáró vizsgák" className="glass-bubble fixed bottom-[max(0.5rem,var(--safe-bottom))] left-1/2 z-50 w-[min(92vw,30rem)] origin-bottom overflow-hidden rounded-2xl border border-destructive/50 text-xs text-destructive">
             <div className="flex items-center gap-1.5 border-b border-destructive/30 px-3 py-1.5 font-semibold">
               <AlertTriangle className="size-3.5" />Lejáró vizsgák ({alerts.length})
               <Button variant="ghost" size="icon" aria-label="Bezárás" onClick={() => setOpen(false)} className="ml-auto size-6"><X /></Button>
