@@ -45,6 +45,9 @@ jobs:
 
       - name: Fix adaptive icon background
         run: |
+          # A capacitor-assets az adaptív ikon XML-ekben a @mipmap/ic_launcher_background
+          # képre hivatkozik, de egyszínű háttérnél nem készít ilyen fájlt (AAPT hiba).
+          # Ezért egyszínű színerőforrást adunk, és a hivatkozásokat arra irányítjuk.
           RES=android/app/src/main/res
           mkdir -p "$RES/values" "$RES/mipmap-anydpi-v26"
           cat > "$RES/values/ic_launcher_background.xml" <<'XML'
@@ -53,6 +56,7 @@ jobs:
               <color name="ic_launcher_background">#130a24</color>
           </resources>
           XML
+          # a heredoc behúzását eltávolítjuk, hogy az XML-deklaráció az első sorban legyen
           sed -i 's/^ *//' "$RES/values/ic_launcher_background.xml"
 
           if ls $RES/mipmap-*/ic_launcher_foreground.png >/dev/null 2>&1; then
@@ -71,6 +75,7 @@ jobs:
               '</adaptive-icon>' > "$RES/mipmap-anydpi-v26/$n.xml"
           done
 
+          # Ellenőrzés: nem maradhat hivatkozás hiányzó mipmap háttérre
           if grep -rn "mipmap/ic_launcher_background" "$RES"; then
             echo "Hiba: maradt hivatkozás a hiányzó mipmap/ic_launcher_background-ra"; exit 1
           fi
@@ -79,10 +84,17 @@ jobs:
       - name: Set version
         working-directory: android
         run: |
+          # versionCode: perc alapú, mindig nő -> az Android a régi APK fölé telepíti az újat
           sed -i -E "s/versionCode[[:space:]]+[0-9]+/versionCode $CODE/; s/versionName[[:space:]]+\"[^\"]*\"/versionName \"$VER\"/" app/build.gradle
           grep -E "versionCode|versionName" app/build.gradle
           grep -q "versionCode $CODE" app/build.gradle || { echo "Hiba: a versionCode nem íródott át"; exit 1; }
           grep -q "versionName \"$VER\"" app/build.gradle || { echo "Hiba: a versionName nem íródott át"; exit 1; }
+
+      - name: Cache Gradle distribution
+        uses: actions/cache@v4
+        with:
+          path: ~/.gradle/wrapper/dists
+          key: gradle-wrapper-${{ runner.os }}-v1
 
       - name: Build release APK
         working-directory: android
@@ -90,13 +102,15 @@ jobs:
           chmod +x gradlew
           sed -i -E 's/^networkTimeout=.*/networkTimeout=120000/' gradle/wrapper/gradle-wrapper.properties
           grep -n networkTimeout gradle/wrapper/gradle-wrapper.properties || echo "networkTimeout=120000" >> gradle/wrapper/gradle-wrapper.properties
-          for i in 1 2 3; do
-            ./gradlew --version && break
-            echo "Gradle letöltés sikertelen ($i/3), újrapróbálás..."
-            rm -rf ~/.gradle/wrapper/dists
-            sleep 15
-            [ "$i" = 3 ] && exit 1
+          # A Gradle-letöltés (services.gradle.org -> github.com) néha 5xx hibát ad: 6 próba, növekvő várakozással
+          ok=0
+          for i in 1 2 3 4 5 6; do
+            if ./gradlew --version; then ok=1; break; fi
+            echo "Gradle letöltés sikertelen ($i/6), újrapróbálás $((i*20)) mp múlva..."
+            rm -rf ~/.gradle/wrapper/dists/gradle-*
+            sleep $((i*20))
           done
+          [ "$ok" = 1 ] || { echo "A Gradle letöltése 6 próba után sem sikerült"; exit 1; }
           ./gradlew assembleRelease --stacktrace
 
       - name: Sign APK
