@@ -171,6 +171,8 @@ export function lastOdometer(d: Device, m = 11) {
 
 export const actions = {
   replaceAll(devices: Device[], workbook?: WorkbookRef, bump = true) { set({ devices, workbook }, bump); },
+  /** Módosítás nélküli mentés/szinkron kiváltása (pl. új év fájljának feltöltéséhez) */
+  touch() { set({ devices: state.devices }); },
   setWorkbook(workbook: WorkbookRef) { set({ devices: state.devices, workbook }, false); },
   move(from: number, to: number) {
     const list = [...state.devices];

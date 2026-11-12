@@ -1,6 +1,8 @@
 import { dropAccessToken, getAccessToken } from "./googleAuth";
 
 export const XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+/** Alapértelmezett közös Drive-mappa (a kereső először ebben keres) */
+export const DEFAULT_FOLDER_ID = "1K-rLEReFb1CDvBI9542WzT0cJ5Km2Hil";
 export type DriveFile = { id: string; name: string; modifiedTime: string; owner: string; canEdit: boolean };
 
 type ApiFile = { id: string; name: string; modifiedTime: string; ownedByMe?: boolean; owners?: { displayName?: string }[]; capabilities?: { canEdit?: boolean } };
@@ -30,11 +32,11 @@ async function call(url: string, init: RequestInit = {}, o: DriveOpts & { retrie
 }
 
 /** .xlsx fájlok keresése a Drive-on (saját és megosztott), legújabb elöl */
-export async function searchXlsx(term: string): Promise<DriveFile[]> {
+export async function searchXlsx(term: string, folderId: string | null = DEFAULT_FOLDER_ID, o: DriveOpts = {}): Promise<DriveFile[]> {
   const t = term.trim().replace(/\\/g, "\\\\").replace(/'/g, "\\'");
-  const q = `mimeType='${XLSX_MIME}' and trashed=false${t ? ` and name contains '${t}'` : ""}`;
-  const params = new URLSearchParams({ q, orderBy: "modifiedTime desc", pageSize: "30", fields: `files(${FIELDS})`, supportsAllDrives: "true", includeItemsFromAllDrives: "true" });
-  const data = (await (await call(`${API}/files?${params.toString()}`)).json()) as { files?: ApiFile[] };
+  const q = `mimeType='${XLSX_MIME}' and trashed=false${folderId ? ` and '${folderId}' in parents` : ""}${t ? ` and name contains '${t}'` : ""}`;
+  const params = new URLSearchParams({ q, orderBy: "modifiedTime desc", pageSize: "100", fields: `files(${FIELDS})`, supportsAllDrives: "true", includeItemsFromAllDrives: "true" });
+  const data = (await (await call(`${API}/files?${params.toString()}`, {}, o)).json()) as { files?: ApiFile[] };
   return (data.files ?? []).map(toFile);
 }
 
@@ -57,4 +59,14 @@ export async function uploadFile(id: string, blob: Blob, o: DriveOpts = {}): Pro
     o,
   );
   return ((await res.json()) as { modifiedTime: string }).modifiedTime;
+}
+
+/** A fájl másolata a közös mappában (új év táblázatához) */
+export async function copyFile(id: string, name: string, o: DriveOpts = {}): Promise<DriveFile> {
+  const res = await call(
+    `${API}/files/${encodeURIComponent(id)}/copy?supportsAllDrives=true&fields=${encodeURIComponent(FIELDS)}`,
+    { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, parents: [DEFAULT_FOLDER_ID] }) },
+    o,
+  );
+  return toFile((await res.json()) as ApiFile);
 }
