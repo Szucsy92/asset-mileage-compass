@@ -7,7 +7,9 @@
 // A Client ID nyilvános azonosító (nem titok), ezért be van égetve; a build-változó felülírhatja.
 const DEFAULT_CLIENT_ID = "576612590188-0hg1avgh1htuhsrmkj1vv6d1mq8u2sk8.apps.googleusercontent.com";
 const CLIENT_ID = (import.meta.env["VITE_GOOGLE_CLIENT_ID"] as string | undefined) || DEFAULT_CLIENT_ID;
-const WEB_CLIENT_ID = (import.meta.env["VITE_GOOGLE_WEB_CLIENT_ID"] as string | undefined) ?? "";
+// Webes kliens (nyilvános azonosító, nem titok; a "client secret"-et soha nem használjuk). A build-változó felülírhatja.
+const DEFAULT_WEB_CLIENT_ID = "576612590188-h0qt8ghahm95mbld4jtk1kf3kun0c9mp.apps.googleusercontent.com";
+const WEB_CLIENT_ID = (import.meta.env["VITE_GOOGLE_WEB_CLIENT_ID"] as string | undefined) || DEFAULT_WEB_CLIENT_ID;
 const SCOPE = "https://www.googleapis.com/auth/drive openid email";
 const SCHEME = "hu.technikaieszkoz.nyilvantartas";
 const REDIRECT = `${SCHEME}:/oauth2redirect`;
@@ -28,7 +30,7 @@ export const driveConfigured = () => (isNative() ? !!CLIENT_ID : !!WEB_CLIENT_ID
 export const driveSetupMessage = () =>
   isNative()
     ? "A Google-bejelentkezés nincs beállítva az APK-ban (hiányzik a GOOGLE_CLIENT_ID)."
-    : "Böngészőben a Google-bejelentkezéshez VITE_GOOGLE_WEB_CLIENT_ID kell. Az APK-ban használd a Drive funkciót.";
+    : "A Google-bejelentkezés böngészőben nincs beállítva (hiányzik a webes Client ID).";
 
 function read(): Tokens | null { try { const r = localStorage.getItem(STORE); return r ? (JSON.parse(r) as Tokens) : null; } catch { return null; } }
 function write(t: Tokens | null) { try { if (t) localStorage.setItem(STORE, JSON.stringify(t)); else localStorage.removeItem(STORE); } catch { /* tele a tár */ } }
