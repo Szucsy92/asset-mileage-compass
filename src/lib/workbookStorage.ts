@@ -11,7 +11,11 @@ export async function saveWorkbookTemplate(file: File, year: number): Promise<Wo
 }
 
 export async function loadWorkbookTemplate(ref?: WorkbookRef) {
-  if (ref) {
+  if (ref?.driveId) {
+    const { downloadFile } = await import("./drive");
+    return (await downloadFile(ref.driveId)).blob.arrayBuffer();
+  }
+  if (ref?.path) {
     const { data, error } = await supabase.storage.from("fleet-workbooks").download(ref.path);
     if (error || !data) throw new Error("A feltöltött eredeti Excel nem érhető el. Próbáld újra.");
     return data.arrayBuffer();

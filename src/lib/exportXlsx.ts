@@ -86,3 +86,15 @@ export async function exportWorkbook(devices: Device[], year: number, ref?: Work
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 30000);
 }
+
+/** Az app adatait a kiválasztott Drive-fájlba írja vissza (a fájl formázása és megosztása megmarad). */
+export async function saveWorkbookToDrive(devices: Device[], year: number, ref: WorkbookRef, confirmOverwrite: () => boolean): Promise<WorkbookRef | null> {
+  if (!ref.driveId) throw new Error("Nincs Drive-fájl kiválasztva.");
+  const { getFileMeta, uploadFile } = await import("./drive");
+  const meta = await getFileMeta(ref.driveId);
+  if (!meta.canEdit) throw new Error("Ehhez a Drive-fájlhoz csak megtekintési jogod van. Kérj szerkesztői hozzáférést.");
+  if (ref.driveModified && meta.modifiedTime !== ref.driveModified && !confirmOverwrite()) return null;
+  const blob = await buildWorkbook(devices, year, await loadWorkbookTemplate(ref));
+  const driveModified = await uploadFile(ref.driveId, blob);
+  return { ...ref, name: meta.name, driveModified };
+}

@@ -2,7 +2,7 @@ import * as XLSX from "xlsx";
 
 export const EXTRAS_MARKER = "APP-ADATOK";
 export const normalizePlate = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]/g, "");
-export type WorkbookRef = { path: string; name: string };
+export type WorkbookRef = { path: string; name: string; driveId?: string; driveModified?: string };
 export type DeviceBlock = { plate: string; row: number; col: number };
 
 export function findBlocks(grid: unknown[][]): DeviceBlock[] {

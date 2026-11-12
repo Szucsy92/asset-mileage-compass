@@ -171,6 +171,7 @@ export function lastOdometer(d: Device, m = 11) {
 
 export const actions = {
   replaceAll(devices: Device[], workbook?: WorkbookRef) { set({ devices, workbook }); },
+  setWorkbook(workbook: WorkbookRef) { set({ devices: state.devices, workbook }); },
   move(from: number, to: number) {
     const list = [...state.devices];
     const [it] = list.splice(from, 1);
