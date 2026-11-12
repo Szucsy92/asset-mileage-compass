@@ -8,11 +8,12 @@ export function DrivePicker({ open, onClose, onPick }: { open: boolean; onClose:
   const [term, setTerm] = useState("");
   const [files, setFiles] = useState<DriveFile[]>([]);
   const [busy, setBusy] = useState(false);
+  const [allDrive, setAllDrive] = useState(false);
   const [error, setError] = useState("");
 
-  const search = async (t: string) => {
+  const search = async (t: string, all = allDrive) => {
     setBusy(true); setError("");
-    try { const { searchXlsx } = await import("@/lib/drive"); setFiles(await searchXlsx(t)); }
+    try { const { searchXlsx, DEFAULT_FOLDER_ID } = await import("@/lib/drive"); setFiles(await searchXlsx(t, all ? null : DEFAULT_FOLDER_ID)); }
     catch (e) { setFiles([]); setError(e instanceof Error ? e.message : "A keresés nem sikerült."); }
     finally { setBusy(false); }
   };
@@ -28,9 +29,13 @@ export function DrivePicker({ open, onClose, onPick }: { open: boolean; onClose:
             placeholder="Fájlnév részlete…" className="min-w-0 flex-1 rounded-md border bg-background px-2 py-1.5 text-sm" />
           <Button size="sm" disabled={busy} onClick={() => void search(term)}>{busy ? "…" : "Keresés"}</Button>
         </div>
+        <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+          <input type="checkbox" checked={allDrive} onChange={(e) => { setAllDrive(e.target.checked); void search(term, e.target.checked); }} />
+          Keresés az egész Drive-on (nem csak a közös mappában)
+        </label>
         {error && <p className="text-xs text-destructive">{error}</p>}
         <div className="max-h-72 space-y-1 overflow-y-auto">
-          {!busy && !error && !files.length && <p className="text-xs text-muted-foreground">Nincs találat (.xlsx fájlokat keresek).</p>}
+          {!busy && !error && !files.length && <p className="text-xs text-muted-foreground">Nincs találat (.xlsx fájlokat keresek a közös mappában).</p>}
           {files.map((f) => (
             <button key={f.id} onClick={() => onPick(f)} className="w-full rounded-md border px-2 py-1.5 text-left hover:bg-accent">
               <div className="truncate text-sm font-medium">{f.name}</div>
