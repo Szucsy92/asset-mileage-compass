@@ -11,5 +11,7 @@ export default defineConfig({
     // Redirect TanStack Start's bundled server entry to src/server.ts (our SSR error wrapper).
     // nitro/vite builds from this
     server: { entry: "server" },
+    // APK_SPA=1: önálló, offline felület a telefonos telepítőbe (GitHub Actions)
+    ...(process.env.APK_SPA ? { spa: { enabled: true } } : {}),
   },
 });
