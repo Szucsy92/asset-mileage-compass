@@ -37,7 +37,8 @@ export async function buildWorkbook(devices: Device[], year: number, source: Arr
       write(block.row + 2, block.col + 3, d.category);
       write(block.row + 3, block.col + 3, d.yearlyAllowed || undefined);
       if (m === 0) write(block.row + 12, block.col + 1, d.startOdometer);
-      const rows = d.months[m] ?? [];
+      const gone = d.removedFrom != null && m >= d.removedFrom;
+      const rows = gone ? [] : d.months[m] ?? [];
       if (rows.length > 31) throw new Error(`${d.plate}: a havi 31 sor nem elég. A letöltés nem ír felül összesítőket.`);
       const assigned = new Map<number, (typeof rows)[number]>();
       for (const row of rows) {
@@ -66,25 +67,44 @@ export async function buildWorkbook(devices: Device[], year: number, source: Arr
       extras.push([d.plate, "beállítás", d.unit, d.norm, d.yearlyAllowed, d.status ?? ""]);
       if (d.note) extras.push([d.plate, "megjegyzés", d.note]);
       if (d.muted) extras.push([d.plate, "némítva", "igen"]);
+      if (d.removedFrom != null) extras.push([d.plate, "törölve", d.removedFrom]);
       // This boundary preserves intentionally empty document/service lists on reimport.
       extras.push([d.plate, "okmányok és szervizek", "teljes"]);
       for (const doc of d.docs) extras.push([d.plate, "okmány", doc.name, doc.number, doc.expiry, `${doc.hasNumber === false ? 0 : 1}${doc.hasDate === false ? 0 : 1}`]);
       for (const service of d.services ?? []) extras.push([d.plate, "szerviz", service.name, service.interval, service.lastReading]);
       extras.push([d.plate, "havi adatok", m]);
-      for (const row of d.months[m] ?? []) extras.push([d.plate, "havi adat", m, row.docNo, row.odometer, row.km, row.weightedKm, row.fuel, row.diff, row.worksheetRow ?? ""]);
+      for (const row of d.removedFrom != null && m >= d.removedFrom ? [] : d.months[m] ?? []) extras.push([d.plate, "havi adat", m, row.docNo, row.odometer, row.km, row.weightedKm, row.fuel, row.diff, row.worksheetRow ?? ""]);
     }
     extras.forEach((row, r) => row.forEach((value, c) => sheet.cell(last + 2 + r, c + 1).value(value)));
   }
   return wb.outputAsync("blob");
 }
 
-export async function exportWorkbook(devices: Device[], year: number, ref?: WorkbookRef) {
+type NativeDownloads = { save: (fileName: string, base64: string) => string };
+
+const blobToBase64 = (blob: Blob) => new Promise<string>((resolve, reject) => {
+  const r = new FileReader();
+  r.onload = () => resolve(String(r.result).split(",")[1] ?? "");
+  r.onerror = () => reject(new Error("A fájl előkészítése nem sikerült."));
+  r.readAsDataURL(blob);
+});
+
+/** Fizikai letöltés: APK-ban a Letöltések mappába ment (natív híd), böngészőben a szokásos letöltés. */
+export async function exportWorkbook(devices: Device[], year: number, ref?: WorkbookRef): Promise<string> {
   const blob = await buildWorkbook(devices, year, await loadWorkbookTemplate(ref));
+  const name = ref?.name ?? `Technikai_eszkozok_${year}.xlsx`;
+  const native = (window as unknown as { NativeDownloads?: NativeDownloads }).NativeDownloads;
+  if (native) {
+    const res = native.save(name, await blobToBase64(blob));
+    if (!res.startsWith("ok:")) throw new Error(`A mentés nem sikerült: ${res.replace(/^err:/, "")}`);
+    return `Letöltve: Letöltések/${res.slice(3)}`;
+  }
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
-  a.href = url; a.download = ref?.name ?? `Technikai_eszkozok_${year}.xlsx`;
+  a.href = url; a.download = name;
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 30000);
+  return "Letöltve";
 }
 
 /** Az app adatait a kiválasztott Drive-fájlba írja (a fájl formázása és megosztása megmarad). */

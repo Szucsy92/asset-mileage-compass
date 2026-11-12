@@ -3,7 +3,7 @@ import type { Service } from "@/lib/maintenance";
 import { norm } from "@/components/WheelPicker";
 import { EXTRAS_MARKER } from "@/lib/workbookLayout";
 
-type Extras = { docs: Doc[]; services: Service[]; note?: string; muted?: boolean; unit?: Device["unit"]; norm?: number; yearlyAllowed?: number; status?: Device["status"]; complete?: boolean };
+type Extras = { docs: Doc[]; services: Service[]; note?: string; muted?: boolean; unit?: Device["unit"]; norm?: number; yearlyAllowed?: number; status?: Device["status"]; complete?: boolean; removedFrom?: number };
 type Parsed = { plate: string; type: string; category: string; start: number | null; months: Record<number, Row[]>; extras?: Extras };
 
 const n = (v: unknown) => { const x = Number(v); return Number.isFinite(x) ? x : 0; };
@@ -84,6 +84,7 @@ export async function parseWorkbook(file: File): Promise<Parsed[]> {
         if (v4 === "H" || v4 === "NH" || v4 === "S") ex.status = v4;
       } else if (kind === "megjegyzés") ex.note = v1;
       else if (kind === "némítva") ex.muted = true;
+      else if (kind === "törölve") { const m = n(row?.[2]); if (m >= 0 && m < 12) ex.removedFrom = m; }
       else if (kind === "okmány") ex.docs.push({ id: uid(), name: v1, number: v2, expiry: /^\d{4}-\d{2}-\d{2}$/.test(v3) ? v3 : "", hasNumber: v4[0] !== "0", hasDate: v4[1] !== "0" });
       else if (kind === "szerviz") ex.services.push({ id: uid(), name: v1, interval: n(v2), lastReading: n(v3) });
     }
@@ -105,17 +106,65 @@ export function mergeImport(current: Device[], parsed: Parsed[], keepNames = tru
       const candidate = devices[j];
       if (candidate && ask(p, candidate)) i = j;
     }
-    const months = Object.fromEntries(Object.entries(p.months).filter(([, r]) => r.length));
     if (i >= 0) {
       const d = devices[i];
       if (!d) continue;
-      devices[i] = { ...d, ...(keepNames ? {} : { plate: p.plate, type: p.type || d.type, category: p.category || d.category }), startOdometer: p.start ?? d.startOdometer, months };
+      // Törölt eszköznél a törlés hónapjától kezdve a fájl adatai nem számítanak; a másik felhasználó törlése átvételre kerül
+      const gone = d.removedFrom ?? p.extras?.removedFrom;
+      const months = Object.fromEntries(Object.entries(p.months).filter(([m, r]) => r.length && (gone == null || Number(m) < gone)));
+      devices[i] = { ...d, ...(d.removedFrom == null && gone != null ? { removedFrom: gone } : {}), ...(keepNames ? {} : { plate: p.plate, type: p.type || d.type, category: p.category || d.category }), startOdometer: p.start ?? d.startOdometer, months };
       updated++;
     } else {
       const ex = p.extras;
-      devices.push({ ...newDevice(p.plate, p.type), category: p.category, startOdometer: p.start ?? 0, months, ...(ex ? { unit: ex.unit ?? "km", norm: ex.norm ?? 0, yearlyAllowed: ex.yearlyAllowed ?? 0, ...(ex.status ? { status: ex.status } : {}), ...(ex.note != null ? { note: ex.note } : {}), ...(ex.muted != null ? { muted: ex.muted } : {}), ...(ex.complete || ex.docs.length ? { docs: ex.docs } : {}), services: ex.services } : {}) });
+      const months = Object.fromEntries(Object.entries(p.months).filter(([m, r]) => r.length && (ex?.removedFrom == null || Number(m) < ex.removedFrom)));
+      devices.push({ ...newDevice(p.plate, p.type), category: p.category, startOdometer: p.start ?? 0, months, ...(ex ? { unit: ex.unit ?? "km", norm: ex.norm ?? 0, yearlyAllowed: ex.yearlyAllowed ?? 0, ...(ex.status ? { status: ex.status } : {}), ...(ex.note != null ? { note: ex.note } : {}), ...(ex.muted != null ? { muted: ex.muted } : {}), ...(ex.removedFrom != null ? { removedFrom: ex.removedFrom } : {}), ...(ex.complete || ex.docs.length ? { docs: ex.docs } : {}), services: ex.services } : {}) });
       added++;
     }
   }
   return { devices, updated, added };
+}
+
+/**
+ * Fájl beolvasása az app mellé, felülírás nélkül: új eszközök teljes szerkezettel kerülnek be,
+ * a meglévőknél a hónapok sorai, az okmányok, szervizek és a még üres beállítások fésülődnek bele.
+ * Az eszközök sorrendje és a meglévő nevek/értékek érintetlenek maradnak.
+ */
+export function mergeFile(current: Device[], parsed: Parsed[], ask: (p: Parsed, d: Device) => boolean = () => false) {
+  const r = mergeImport(current, parsed, true, ask);
+  const same = (a: Row, b: Row) => a.docNo === b.docNo && a.odometer === b.odometer && a.km === b.km && a.fuel === b.fuel;
+  const devices = r.devices.map((d) => {
+    const old = current.find((c) => c.id === d.id);
+    if (!old) return d;
+    const p = parsed.find((x) => norm(x.plate) === norm(old.plate)) ?? parsed.find((x) => similar(old.plate, x.plate));
+    const months: Record<number, Row[]> = {};
+    for (let m = 0; m < 12; m++) {
+      const fileRows = d.months[m] ?? [], appRows = old.months[m] ?? [];
+      const used = new Set(fileRows.map((x) => x.worksheetRow).filter((x): x is number => x != null));
+      const extra = appRows.filter((a) => !(a.worksheetRow != null && used.has(a.worksheetRow)) && !fileRows.some((f) => same(a, f)));
+      const rows = [...fileRows, ...extra].sort((a, b) => (a.worksheetRow ?? 99) - (b.worksheetRow ?? 99));
+      if (rows.length) months[m] = rows;
+    }
+    let out: Device = { ...d, months, type: old.type || p?.type || "", category: old.category || p?.category || "" };
+    const ex = p?.extras;
+    if (ex) {
+      const docs = [...old.docs];
+      for (const x of ex.docs) {
+        const i = docs.findIndex((y) => norm(y.name) === norm(x.name));
+        const cur = docs[i];
+        if (!cur) docs.push(x); else docs[i] = { ...cur, number: cur.number || x.number, expiry: cur.expiry || x.expiry };
+      }
+      const services = [...(old.services ?? [])];
+      for (const x of ex.services) if (!services.some((y) => norm(y.name) === norm(x.name))) services.push(x);
+      out = {
+        ...out, docs, services,
+        ...(!old.note && ex.note ? { note: ex.note } : {}),
+        ...(!old.muted && ex.muted ? { muted: true } : {}),
+        ...(!old.norm && ex.norm ? { norm: ex.norm } : {}),
+        ...(!old.yearlyAllowed && ex.yearlyAllowed ? { yearlyAllowed: ex.yearlyAllowed } : {}),
+        ...(!old.status && ex.status ? { status: ex.status } : {}),
+      };
+    }
+    return out;
+  });
+  return { devices, updated: r.updated, added: r.added };
 }

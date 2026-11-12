@@ -25,6 +25,8 @@ export type Device = {
   note?: string;
   /** Értesítések némítása ennél az eszköznél */
   muted?: boolean;
+  /** Törölt eszköz: ettől a hónaptól (0–11) nincs adat/megjelenítés, az előtte lévő hónapok megmaradnak. A bejegyzés jelzőként marad, hogy a táblázatból ne kerüljön vissza. */
+  removedFrom?: number;
   months: Record<number, Row[]>;
 };
 type State = { devices: Device[]; workbook?: WorkbookRef | undefined };
@@ -154,7 +156,7 @@ export async function closeYear() {
   const devices = store.devices;
   const { error } = await supabase.from("fleet_years").update({ data: clean(store) as never, closed: true, closed_at: new Date().toISOString() }).eq("year", y);
   if (error) { patchStore({ status: "error" }); return; }
-  const next: State = { devices: devices.map((d) => ({ ...d, startOdometer: lastOdometer(d), months: {} })) };
+  const next: State = { devices: devices.filter((d) => d.removedFrom == null).map((d) => ({ ...d, startOdometer: lastOdometer(d), months: {} })) };
   const { error: e2 } = await supabase.from("fleet_years").insert({ year: y + 1, closed: false, data: next as never });
   if (e2) { patchStore({ status: "error" }); return; }
   patchStore({ years: await fetchYears() });
@@ -179,8 +181,28 @@ export const actions = {
     const [it] = list.splice(from, 1);
     if (it) { list.splice(to, 0, it); set({ devices: list }); }
   },
-  add(d: Device) { set({ devices: [...state.devices, d] }); },
-  remove(id: string) { set({ devices: state.devices.filter((d) => d.id !== id) }); },
+  /** Új eszköz; ha ugyanilyen rendszámú törölt eszköz van, az éled újra (régi hónapjai megmaradnak). Visszaadja a használt eszköz azonosítóját. */
+  add(d: Device): string {
+    const key = (s: string) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]/g, "");
+    const i = state.devices.findIndex((x) => x.removedFrom != null && key(x.plate) === key(d.plate));
+    const old = state.devices[i];
+    if (old) {
+      const { removedFrom: _gone, ...rest } = old;
+      const list = [...state.devices];
+      list[i] = { ...rest, type: d.type || rest.type };
+      set({ devices: list });
+      return old.id;
+    }
+    set({ devices: [...state.devices, d] });
+    return d.id;
+  },
+  /** Törlés a megadott hónaptól: az előtte lévő hónapok adatai megmaradnak, onnantól az eszköz nem látszik és nem kerül vissza a táblázatból */
+  retire(id: string, fromMonth: number) {
+    const d = state.devices.find((x) => x.id === id);
+    if (!d) return;
+    const months = Object.fromEntries(Object.entries(d.months).filter(([m]) => Number(m) < fromMonth));
+    actions.update(id, { removedFrom: fromMonth, months });
+  },
   update(id: string, patch: Partial<Device>) {
     set({ devices: state.devices.map((d) => (d.id === id ? { ...d, ...patch } : d)) });
   },
