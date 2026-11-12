@@ -3,9 +3,6 @@
   "appName": "Technikai eszköz",
   "webDir": "mobile-shell",
   "backgroundColor": "#130a24",
-  "server": {
-    "url": "https://asset-mileage-compass.lovable.app",
-    "cleartext": false
-  },
+  "server": { "androidScheme": "https" },
   "android": { "backgroundColor": "#130a24" }
 }

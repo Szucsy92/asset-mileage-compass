@@ -21,8 +21,9 @@ export function UpdateBanner() {
 
   useEffect(() => {
     const q = new URLSearchParams(window.location.search);
-    const v = q.get("apk");
-    const repo = q.get("repo");
+    const built = (window as unknown as { __APK__?: Info }).__APK__;
+    const v = built?.v ?? q.get("apk");
+    const repo = built?.repo ?? q.get("repo");
     if (v && repo) localStorage.setItem(KEY, JSON.stringify({ v, repo }));
     let info: Info | null = null;
     try {

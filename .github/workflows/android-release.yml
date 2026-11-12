@@ -24,12 +24,17 @@ jobs:
 
       - name: Prepare shell and Capacitor
         run: |
-          mkdir -p mobile-shell
-          echo '<!doctype html><html><body style="background:#130a24"></body></html>' > mobile-shell/index.html
+          # Teljes felület az APK-ba építve: internet nélkül is megnyílik
+          npm i -g bun
+          bun install --frozen-lockfile || bun install
+          APK_SPA=1 bunx vite build
+          rm -rf mobile-shell && cp -r dist/client mobile-shell
           node -e '
-            const f="capacitor.config.json",c=require("./"+f);
-            c.server.url += "/?apk="+process.env.VER+"&repo="+process.env.GITHUB_REPOSITORY;
-            require("fs").writeFileSync(f,JSON.stringify(c,null,2));'
+            const fs=require("fs"),f="mobile-shell/_shell.html";
+            const tag="<script>window.__APK__="+JSON.stringify({v:process.env.VER,repo:process.env.GITHUB_REPOSITORY})+"</script>";
+            fs.writeFileSync("mobile-shell/index.html",fs.readFileSync(f,"utf8").replace("<head>","<head>"+tag));'
+          test -s mobile-shell/index.html
+          rm -rf node_modules
           mkdir -p /tmp/cap && cd /tmp/cap && npm init -y >/dev/null
           npm i @capacitor/core@6 @capacitor/cli@6 @capacitor/android@6 @capacitor/assets
           cp -r node_modules "$GITHUB_WORKSPACE/"
