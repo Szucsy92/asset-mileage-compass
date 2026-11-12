@@ -74,7 +74,7 @@ function Stat({ label, value, tone }: { label: string; value: string; tone?: "go
 }
 
 function Index() {
-  const { devices, years, year, closed, status, workbook } = useFleet();
+  const { devices, years, year, closed, status, workbook, offline } = useFleet();
   const [devId, setDevId] = useState<string | null>(null);
   const [month, setMonth] = useState(0);
   const [picker, setPicker] = useState<"dev" | "month" | null>(null);
@@ -109,7 +109,7 @@ function Index() {
           ))}
         </div>
         <span className={`ml-auto text-[10px] ${status === "error" ? "text-destructive" : "text-muted-foreground"}`}>
-          {status === "loading" ? "betöltés…" : status === "saving" ? "mentés…" : status === "error" ? "hiba – nincs mentve" : closed ? "lezárt év – csak olvasható" : "mentve"}
+          {status === "loading" ? "betöltés…" : status === "saving" ? "mentés…" : status === "error" ? "hiba – nincs mentve" : closed ? "lezárt év – csak olvasható" : offline ? "helyi mód – mentve a telefonon" : "mentve"}
         </span>
         {year != null && (
           <div className="relative">
