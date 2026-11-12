@@ -23,6 +23,8 @@ jobs:
           echo "CODE=$(( $(date +%s) / 60 ))" >> $GITHUB_ENV
 
       - name: Prepare shell and Capacitor
+        env:
+          VITE_GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID }}
         run: |
           # Teljes felület az APK-ba építve: internet nélkül is megnyílik
           npm i -g bun
@@ -44,9 +46,15 @@ jobs:
           test -s mobile-shell/index.html
           rm -rf node_modules
           mkdir -p /tmp/cap && cd /tmp/cap && npm init -y >/dev/null
-          npm i @capacitor/core@6 @capacitor/cli@6 @capacitor/android@6 @capacitor/assets
+          npm i @capacitor/core@6 @capacitor/cli@6 @capacitor/android@6 @capacitor/app@6 @capacitor/browser@6 @capacitor/assets
           cp -r node_modules "$GITHUB_WORKSPACE/"
           cd "$GITHUB_WORKSPACE"
+          # A Capacitor a package.json függőségeiből találja meg a natív bővítményeket
+          node -e '
+            const fs=require("fs"),p=JSON.parse(fs.readFileSync("package.json","utf8"));
+            p.dependencies=p.dependencies||{};
+            for(const n of ["@capacitor/app","@capacitor/browser"]) p.dependencies[n]=require("./node_modules/"+n+"/package.json").version;
+            fs.writeFileSync("package.json",JSON.stringify(p,null,2));'
           npx cap add android
           mkdir -p assets
           cp public/icon-512.png assets/icon-only.png
@@ -93,6 +101,27 @@ jobs:
             echo "Hiba: maradt hivatkozás a hiányzó mipmap/ic_launcher_background-ra"; exit 1
           fi
           cat "$RES/mipmap-anydpi-v26/ic_launcher.xml"
+
+      - name: Add Google OAuth redirect
+        run: |
+          # A Google-bejelentkezés után a rendszerböngésző ezzel a sémával tér vissza az appba
+          python3 - <<'PY'
+          p = "android/app/src/main/AndroidManifest.xml"
+          s = open(p, encoding="utf-8").read()
+          flt = """
+                  <intent-filter>
+                      <action android:name="android.intent.action.VIEW" />
+                      <category android:name="android.intent.category.DEFAULT" />
+                      <category android:name="android.intent.category.BROWSABLE" />
+                      <data android:scheme="hu.technikaieszkoz.nyilvantartas" />
+                  </intent-filter>
+          """
+          assert "</activity>" in s, "nincs </activity> a manifestben"
+          s = s.replace("</activity>", flt + "</activity>", 1)
+          open(p, "w", encoding="utf-8").write(s)
+          PY
+          grep -n "hu.technikaieszkoz.nyilvantartas\" />" android/app/src/main/AndroidManifest.xml
+          grep -n "launchMode" android/app/src/main/AndroidManifest.xml || { echo "Hiba: nincs launchMode"; exit 1; }
 
       - name: Apply edge-to-edge native shell
         run: |
@@ -150,7 +179,9 @@ jobs:
           $BT/apksigner sign --ks release.jks --ks-pass env:KS_PASS \
             --ks-key-alias "$KEY_ALIAS" --key-pass env:KEY_PASS \
             --out technikai-eszkoz-$VER.apk aligned.apk
-          $BT/apksigner verify technikai-eszkoz-$VER.apk
+          $BT/apksigner verify --print-certs technikai-eszkoz-$VER.apk | tee certs.txt
+          echo "### Aláíró tanúsítvány" >> "$GITHUB_STEP_SUMMARY"
+          grep -iE "SHA-(1|256) digest" certs.txt | sed 's/^/- /' >> "$GITHUB_STEP_SUMMARY"
 
       - uses: softprops/action-gh-release@v2
         with:
