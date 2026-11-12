@@ -54,7 +54,7 @@ const seed = (): State => ({
 });
 
 export type YearInfo = { year: number; closed: boolean };
-type Store = State & { years: YearInfo[]; year: number | null; closed: boolean; status: "loading" | "ready" | "error" | "saving" };
+type Store = State & { years: YearInfo[]; year: number | null; closed: boolean; status: "loading" | "ready" | "error" | "saving"; offline?: boolean };
 
 let store: Store = { devices: [], years: [], year: null, closed: false, status: "loading" };
 let started = false;
@@ -65,6 +65,21 @@ const patchStore = (p: Partial<Store>) => { store = { ...store, ...p }; emit(); 
 
 const clean = (s: State): State => ({ devices: s.devices, workbook: s.workbook });
 
+// Offline-first helyi tár: az utolsó ismert állapot és a még fel nem küldött módosítás
+const CACHE = "fleet-cache-v1";
+type Cache = { years: YearInfo[]; year: number; closed: boolean; data: State; pending?: boolean };
+function readCache(): Cache | null { try { const r = localStorage.getItem(CACHE); return r ? JSON.parse(r) : null; } catch { return null; } }
+function writeCache(pending?: boolean) {
+  if (store.year == null) return;
+  try { localStorage.setItem(CACHE, JSON.stringify({ years: store.years, year: store.year, closed: store.closed, data: clean(store), pending: pending ?? readCache()?.pending })); } catch { /* tele a tár */ }
+}
+async function pushPending() {
+  const c = readCache();
+  if (!c?.pending || c.closed) return;
+  const { error } = await supabase.from("fleet_years").update({ data: c.data as never, updated_at: new Date().toISOString() }).eq("year", c.year);
+  if (!error) { writeCache(false); patchStore({ status: "ready", offline: false }); }
+}
+
 async function fetchYears() {
   const { data, error } = await supabase.from("fleet_years").select("year, closed").order("year");
   if (error) throw error;
@@ -74,12 +89,18 @@ export async function openYear(year: number) {
   patchStore({ status: "loading" });
   const { data, error } = await supabase.from("fleet_years").select("year, closed, data").eq("year", year).single();
   if (error) { patchStore({ status: "error" }); return; }
-  patchStore({ year, closed: data.closed, ...clean(data.data as unknown as State), status: "ready" });
+  patchStore({ year, closed: data.closed, ...clean(data.data as unknown as State), status: "ready", offline: false });
+  writeCache(false);
 }
 async function start() {
   if (started || typeof window === "undefined") return;
   started = true;
+  const cached = readCache();
+  if (cached) patchStore({ years: cached.years, year: cached.year, closed: cached.closed, ...clean(cached.data), status: "ready", offline: true });
+  window.addEventListener("online", () => { void pushPending(); });
   try {
+    await pushPending();
+    if (readCache()?.pending) throw new Error("offline");
     let years = await fetchYears();
     if (!years.length) {
       let initial: State;
@@ -97,18 +118,22 @@ async function start() {
       const row = p.new as { year?: number; closed?: boolean; data?: unknown };
       if (p.eventType === "INSERT" || row.closed !== undefined) patchStore({ years: await fetchYears() });
       if (row.year !== store.year || store.status === "saving" || !row.data) return;
+      if (readCache()?.pending) return;
       patchStore({ closed: !!row.closed, ...clean(row.data as State) });
+      writeCache(false);
     }).subscribe();
-  } catch { patchStore({ status: "error" }); }
+  } catch { patchStore(cached ? { status: "ready", offline: true } : { status: "error" }); }
 }
 function set(next: State) {
   if (store.closed || store.year == null) return;
   patchStore({ devices: next.devices, workbook: next.workbook ?? store.workbook, status: "saving" });
+  writeCache(true);
   clearTimeout(saveTimer);
   const year = store.year;
   saveTimer = setTimeout(async () => {
     const { error } = await supabase.from("fleet_years").update({ data: clean(store) as never, updated_at: new Date().toISOString() }).eq("year", year);
-    patchStore({ status: error ? "error" : "ready" });
+    if (error) patchStore({ status: "ready", offline: true });
+    else { writeCache(false); patchStore({ status: "ready", offline: false }); }
   }, 600);
 }
 const state = { get devices() { return store.devices; } };
