@@ -129,7 +129,47 @@ jobs:
           DIR=android/app/src/main/java/hu/technikaieszkoz/nyilvantartas
           test -d "$DIR" || { echo "Hiba: nincs $DIR"; find android/app/src/main/java -type f; exit 1; }
           cp native/MainActivity.java "$DIR/MainActivity.java"
+          # Az alkalmazáson belüli frissítés csak a saját repó release-fájljait tölti le
+          sed -i "s#__RELEASE_REPO__#${GITHUB_REPOSITORY}#" "$DIR/MainActivity.java"
+          if grep -n "__RELEASE_REPO__" "$DIR/MainActivity.java"; then echo "Hiba: a repó neve nem íródott be"; exit 1; fi
           grep -n "class MainActivity" "$DIR/MainActivity.java"
+
+      - name: Prepare in-app updater (install permission, FileProvider)
+        run: |
+          # Az APK-telepítéshez: REQUEST_INSTALL_PACKAGES jogosultság és a letöltési mappa (cache/updates) megosztása
+          python3 - <<'PY'
+          p = "android/app/src/main/AndroidManifest.xml"
+          s = open(p, encoding="utf-8").read()
+          perm = '<uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />'
+          if "REQUEST_INSTALL_PACKAGES" not in s:
+              assert "<application" in s, "nincs <application> a manifestben"
+              s = s.replace("<application", "    " + perm + "\n\n    <application", 1)
+          if "androidx.core.content.FileProvider" not in s:
+              prov = """
+                  <provider
+                      android:name="androidx.core.content.FileProvider"
+                      android:authorities="${applicationId}.fileprovider"
+                      android:exported="false"
+                      android:grantUriPermissions="true">
+                      <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/file_paths" />
+                  </provider>
+          """
+              assert "</application>" in s, "nincs </application> a manifestben"
+              s = s.replace("</application>", prov + "</application>", 1)
+          open(p, "w", encoding="utf-8").write(s)
+          PY
+          mkdir -p android/app/src/main/res/xml
+          cat > android/app/src/main/res/xml/file_paths.xml <<'XML'
+          <?xml version="1.0" encoding="utf-8"?>
+          <paths xmlns:android="http://schemas.android.com/apk/res/android">
+              <external-path name="my_images" path="." />
+              <cache-path name="my_cache_images" path="." />
+              <cache-path name="updates" path="updates/" />
+          </paths>
+          XML
+          sed -i 's/^ *//' android/app/src/main/res/xml/file_paths.xml
+          grep -n "REQUEST_INSTALL_PACKAGES\|fileprovider" android/app/src/main/AndroidManifest.xml
+          cat android/app/src/main/res/xml/file_paths.xml
 
       - name: Set version
         working-directory: android
@@ -186,6 +226,7 @@ jobs:
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ env.VER }}
-          name: Technikai eszköz ${{ env.VER }}
+          # A frissítő a build számot (versionCode) a release nevéből olvassa ki
+          name: Technikai eszköz ${{ env.VER }} (build${{ env.CODE }})
           files: technikai-eszkoz-${{ env.VER }}.apk
           make_latest: true
