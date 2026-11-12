@@ -12,6 +12,6 @@ export default defineConfig({
     // nitro/vite builds from this
     server: { entry: "server" },
     // APK_SPA=1: önálló, offline felület a telefonos telepítőbe (GitHub Actions)
-    ...(process.env.APK_SPA ? { spa: { enabled: true } } : {}),
+    ...(process.env["APK_SPA"] ? { spa: { enabled: true } } : {}),
   },
 });
