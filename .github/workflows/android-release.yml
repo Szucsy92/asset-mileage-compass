@@ -12,7 +12,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with: { node-version: 20 }
+        with: { node-version: 22 }
       - uses: actions/setup-java@v4
         with: { distribution: temurin, java-version: 21 }
       # Android SDK is preinstalled on ubuntu-latest (ANDROID_HOME); no setup-android step.
@@ -28,7 +28,15 @@ jobs:
           npm i -g bun
           bun install --frozen-lockfile || bun install
           APK_SPA=1 bunx vite build
-          rm -rf mobile-shell && cp -r dist/client mobile-shell
+          # A nitro a buildet nem a dist/client-be, hanem pl. .output/public-ba teszi:
+          # megkeressük a mappát, ahol a _shell.html van
+          SHELL_FILE=$(find . -name _shell.html -not -path './node_modules/*' -not -path './android/*' | head -1)
+          if [ -z "$SHELL_FILE" ]; then
+            echo "Hiba: nem található _shell.html a build után"; ls -la; ls -la dist .output 2>/dev/null; exit 1
+          fi
+          OUT=$(dirname "$SHELL_FILE")
+          echo "Build kimenet: $OUT"
+          rm -rf mobile-shell && cp -r "$OUT" mobile-shell
           node -e '
             const fs=require("fs"),f="mobile-shell/_shell.html";
             const tag="<script>window.__APK__="+JSON.stringify({v:process.env.VER,repo:process.env.GITHUB_REPOSITORY})+"</script>";
