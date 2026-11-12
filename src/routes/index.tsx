@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { ChevronDown, Plus, Trash2, AlertTriangle, X, Lock, CalendarPlus, FileSpreadsheet, CloudUpload, CloudDownload, LogOut, LogIn } from "lucide-react";
+import { ChevronDown, Plus, Trash2, AlertTriangle, X, Lock, CalendarPlus, FileSpreadsheet, ArrowUp, FileUp, Download, LogOut, LogIn } from "lucide-react";
 import { getAccessToken, isSignedIn, signOut, signedInEmail } from "@/lib/googleAuth";
 import type { WorkbookRef } from "@/lib/workbookLayout";
 import { WheelPicker } from "@/components/WheelPicker";
@@ -85,6 +85,8 @@ function Index() {
   const [picker, setPicker] = useState<"dev" | "month" | null>(null);
   const [adding, setAdding] = useState(false);
   const [xlsOpen, setXlsOpen] = useState(false);
+  const [upOpen, setUpOpen] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
   const [excelBusy, setExcelBusy] = useState(false);
   const [signedIn, setSignedIn] = useState(false);
   const [driveSync, setDriveSync] = useState<{ state: "idle" | "saving" | "ok" | "error"; msg?: string }>({ state: "idle" });
@@ -104,7 +106,7 @@ function Index() {
   const setDirty = (y: number, on: boolean) => { try { if (on) localStorage.setItem(dirtyKey(y), "1"); else localStorage.removeItem(dirtyKey(y)); } catch { /* tele a tár */ } };
   const isDirty = (y: number) => { try { return localStorage.getItem(dirtyKey(y)) === "1"; } catch { return false; } };
 
-  useEffect(() => { setSignedIn(isSignedIn()); }, [xlsOpen]);
+  useEffect(() => { setSignedIn(isSignedIn()); if (!xlsOpen) setUpOpen(false); }, [xlsOpen]);
 
   // Hálózat visszatértekor a függő Drive-szinkron és a betöltés újrapróbálása
   useEffect(() => {
@@ -185,12 +187,33 @@ function Index() {
     finally { setExcelBusy(false); setSignedIn(isSignedIn()); }
   };
   const signInNow = () => guarded(async () => { await getAccessToken(); });
-  /** Letöltés: Drive → app */
-  const readDrive = () => guarded(async () => {
-    if (!yf?.driveId) return;
-    await applyDriveFile(yf);
-    flash("Letöltve a Drive-ból");
+  /** Letöltés: az app adataival kitöltött táblázat fizikai mentése a telefon Letöltések mappájába */
+  const downloadFileNow = () => guarded(async () => {
+    if (year == null) return;
+    const { exportWorkbook } = await import("@/lib/exportXlsx");
+    flash(await exportWorkbook(devices, year, yf ?? undefined));
   });
+  /** Feltöltés fájlból: a telefonról választott táblázat felülírás nélkül beleolvad az appba, majd a Drive-fájlba */
+  const onPickFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0]; e.target.value = "";
+    if (!f || closed || year == null) return;
+    void guarded(async () => {
+      const { parseWorkbook, mergeFile } = await import("@/lib/importXlsx");
+      const parsed = await parseWorkbook(f);
+      if (!parsed.length) throw new Error("A fájlban nem találtam eszközt.");
+      const r = mergeFile(devicesRef.current, parsed, (p, d) => confirm(`A fájlban „${p.plate}" szerepel. Azonos ezzel az eszközzel: „${d.plate}"?`));
+      if (yf?.driveId && isSignedIn()) {
+        const { saveWorkbookToDrive } = await import("@/lib/exportXlsx");
+        await saveWorkbookToDrive(r.devices, year, yf);
+        actions.replaceAll(r.devices, undefined, false);
+        syncedRev.current = rev; setDirty(year, false); setDriveSync({ state: "ok" });
+        flash(`Beleolvasztva és feltöltve a Drive-ba (${r.updated} frissítve, ${r.added} új)`);
+      } else {
+        actions.replaceAll(r.devices, undefined, true);
+        flash("Beleolvasztva, de nincs Drive-kapcsolat – a következő szinkronnál kerül fel");
+      }
+    });
+  };
   /** Feltöltés: app → Drive (azonnal) */
   const saveDrive = () => guarded(async () => {
     if (year == null || !yf?.driveId) return;
@@ -221,18 +244,20 @@ function Index() {
     : fileState.state === "error" ? (offline ? "" : "Drive hiba") : driveSync.state === "error" ? "Drive: szinkron vár" : "";
 
   useEffect(() => { setMonth(new Date().getMonth()); }, []);
+  /** Az adott hónapban még létező eszközök (a törölt eszköz a törlés hónapjától nem látszik) */
+  const shown = devices.filter((d) => d.removedFrom == null || month < d.removedFrom);
   useEffect(() => {
-    if (devices.length && !devices.find((d) => d.id === devId)) {
-      setDevId(devices[0]!.id);
-      const lm = latestUpTo(devices[0]!, 11);
-      if (lm != null) setMonth(lm);
+    if (shown.length && !shown.find((d) => d.id === devId)) {
+      setDevId(shown[0]!.id);
+      const lm = latestUpTo(shown[0]!, 11);
+      if (lm != null && !devices.find((d) => d.id === devId)) setMonth(lm);
     }
-  }, [devices, devId]);
+  }, [devices, devId, month]);
 
-  const dev = devices.find((d) => d.id === devId);
-  const devIndex = Math.max(0, devices.findIndex((d) => d.id === devId));
+  const dev = shown.find((d) => d.id === devId);
+  const devIndex = Math.max(0, shown.findIndex((d) => d.id === devId));
 
-  const alerts = devices.flatMap((d) =>
+  const alerts = devices.filter((d) => d.removedFrom == null).flatMap((d) =>
     d.docs.map((doc) => ({ d, doc, days: daysLeft(doc.expiry) })).filter((x) => x.days != null && x.days <= 30),
   ).sort((a, b) => compareDeadlines(a.days ?? 0, b.days ?? 0));
 
@@ -251,6 +276,7 @@ function Index() {
         </span>
         {year != null && (
           <div className="relative">
+            <input ref={fileRef} type="file" accept=".xlsx,.xlsm,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" className="hidden" onChange={onPickFile} />
             <Button variant="outline" disabled={excelBusy || status === "loading" || status === "saving"} aria-expanded={xlsOpen} onClick={() => setXlsOpen((o) => !o)} className="h-auto gap-1 px-2 py-0.5 text-xs text-muted-foreground">
               <FileSpreadsheet className="size-3" />{excelBusy ? "Excel…" : "Excel"}<ChevronDown className={`size-3 transition-transform ${xlsOpen ? "rotate-180" : ""}`} />
             </Button>
@@ -267,11 +293,21 @@ function Index() {
                       <LogIn className="size-4" />Bejelentkezés
                     </Button>
                   )}
-                  <Button role="menuitem" variant="ghost" disabled={!yf} onClick={() => void saveDrive()} className="h-auto w-full justify-start px-2 py-2 text-xs">
-                    <CloudUpload className="size-4" />Táblázat feltöltése
+                  <Button role="menuitem" variant="ghost" disabled={!yf && closed} aria-expanded={upOpen} onClick={() => setUpOpen((o) => !o)} className="h-auto w-full justify-start px-2 py-2 text-xs">
+                    <ArrowUp className="size-4" />Feltöltés<ChevronDown className={`ml-auto size-3 transition-transform ${upOpen ? "rotate-180" : ""}`} />
                   </Button>
-                  <Button role="menuitem" variant="ghost" disabled={closed || !yf} onClick={() => void readDrive()} className="h-auto w-full justify-start px-2 py-2 text-xs">
-                    <CloudDownload className="size-4" />Táblázat letöltése
+                  {upOpen && (
+                    <div className="ml-4 border-l pl-1">
+                      <Button role="menuitem" variant="ghost" disabled={!yf} onClick={() => void saveDrive()} className="h-auto w-full justify-start px-2 py-2 text-xs">
+                        <ArrowUp className="size-4" />Szinkron (az app adatai fel)
+                      </Button>
+                      <Button role="menuitem" variant="ghost" disabled={closed} onClick={() => fileRef.current?.click()} className="h-auto w-full justify-start px-2 py-2 text-xs">
+                        <FileUp className="size-4" />Feltöltés fájlból
+                      </Button>
+                    </div>
+                  )}
+                  <Button role="menuitem" variant="ghost" onClick={() => void downloadFileNow()} className="h-auto w-full justify-start px-2 py-2 text-xs">
+                    <Download className="size-4" />Letöltés fájlba
                   </Button>
                 </div>
               </>
@@ -302,21 +338,21 @@ function Index() {
         </div>
         <div className="flex flex-col gap-1">
           <button aria-label="Új eszköz" disabled={closed} onClick={() => setAdding(true)} className="flex flex-1 items-center justify-center rounded-md bg-primary px-2 text-primary-foreground"><Plus className="size-4" /></button>
-          <button aria-label="Eszköz törlése" disabled={!dev || closed} onClick={() => dev && confirm(`Törlöd: ${dev.plate}?`) && actions.remove(dev.id)} className="flex flex-1 items-center justify-center rounded-md border px-2 text-destructive"><Trash2 className="size-4" /></button>
+          <button aria-label="Eszköz törlése" disabled={!dev || closed} onClick={() => dev && confirm(month === 0 ? `Törlöd: ${dev.plate}? Egyetlen hónapban sem fog látszani.` : `Törlöd: ${dev.plate}? A kijelölt hónaptól (${MONTHS[month]}) kezdve eltűnik, az előtte lévő hónapok adatai megmaradnak.`) && actions.retire(dev.id, month)} className="flex flex-1 items-center justify-center rounded-md border px-2 text-destructive"><Trash2 className="size-4" /></button>
         </div>
       </div>
 
       {dev ? <div className="flex min-h-0 flex-1 flex-col"><Sheet key={dev.id} dev={dev} month={month} closed={closed} /></div> : <p className="p-6 text-center text-muted-foreground">{status === "loading" ? "Betöltés…" : "Nincs eszköz."}</p>}
       <ExpiryBar alerts={alerts} onPick={(id) => setDevId(id)} />
 
-      {picker === "dev" && devices.length > 0 && (
-        <WheelPicker searchable items={devices.map((d) => `${d.plate} · ${d.type}`)} value={devIndex}
-          onSelect={(i) => { const d = devices[i]!; setDevId(d.id); const lm = latestUpTo(d, 11); if (lm != null) setMonth(lm); setPicker(null); }} onReorder={closed ? undefined : (a, b) => actions.move(a, b)} onClose={() => setPicker(null)} />
+      {picker === "dev" && shown.length > 0 && (
+        <WheelPicker searchable items={shown.map((d) => `${d.plate} · ${d.type}`)} value={devIndex}
+          onSelect={(i) => { const d = shown[i]!; setDevId(d.id); const lm = latestUpTo(d, 11); if (lm != null) setMonth(lm); setPicker(null); }} onReorder={closed ? undefined : (a, b) => actions.move(devices.indexOf(shown[a]!), devices.indexOf(shown[b]!))} onClose={() => setPicker(null)} />
       )}
       {picker === "month" && (
         <WheelPicker items={MONTHS} value={month} onSelect={(i) => { setMonth(i); setPicker(null); }} onClose={() => setPicker(null)} />
       )}
-      {adding && <AddDialog onClose={() => setAdding(false)} onAdd={(d) => { actions.add(d); setDevId(d.id); setAdding(false); }} />}
+      {adding && <AddDialog onClose={() => setAdding(false)} onAdd={(d) => { setDevId(actions.add(d)); setAdding(false); }} />}
             </main>
   );
 }
