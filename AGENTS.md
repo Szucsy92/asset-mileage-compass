@@ -20,4 +20,4 @@
 - Derive launcher icons from the supplied source artwork with a background matching the manifest launch color; provide separate safe-area maskable variants so operating-system cropping preserves the artwork.
 - Excel downloads edit the shared original XLSX with xlsx-populate, never rebuild it with SheetJS; SheetJS only locates blocks and reads cached values. Annual snapshots retain immutable workbook references; imported daily row offsets preserve placement and app-only extras follow the original used range.
 
-- Android APK is built only in GitHub Actions (manual run → signed release); the app shell loads the published site so data stays shared, and Capacitor packages are installed in CI, not in project deps.
+- Android APK is built only in GitHub Actions (manual run → signed release); it bundles the SPA build (APK_SPA=1) so the UI opens offline, data is cached on the device and pushed to the shared cloud when online; Capacitor packages are installed in CI, not in project deps.
