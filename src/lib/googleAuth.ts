@@ -4,7 +4,9 @@
  *  - Böngésző: Google Identity Services (csak ha van VITE_GOOGLE_WEB_CLIENT_ID).
  * A tokenek csak ezen a telefonon (localStorage) vannak, a közös adatbázisba nem kerülnek.
  */
-const CLIENT_ID = (import.meta.env["VITE_GOOGLE_CLIENT_ID"] as string | undefined) ?? "";
+// A Client ID nyilvános azonosító (nem titok), ezért be van égetve; a build-változó felülírhatja.
+const DEFAULT_CLIENT_ID = "576612590188-0hg1avgh1htuhsrmkj1vv6d1mq8u2sk8.apps.googleusercontent.com";
+const CLIENT_ID = (import.meta.env["VITE_GOOGLE_CLIENT_ID"] as string | undefined) || DEFAULT_CLIENT_ID;
 const WEB_CLIENT_ID = (import.meta.env["VITE_GOOGLE_WEB_CLIENT_ID"] as string | undefined) ?? "";
 const SCOPE = "https://www.googleapis.com/auth/drive openid email";
 const SCHEME = "hu.technikaieszkoz.nyilvantartas";
