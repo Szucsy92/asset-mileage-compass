@@ -54,9 +54,9 @@ const seed = (): State => ({
 });
 
 export type YearInfo = { year: number; closed: boolean };
-type Store = State & { years: YearInfo[]; year: number | null; closed: boolean; status: "loading" | "ready" | "error" | "saving"; offline?: boolean };
+type Store = State & { years: YearInfo[]; year: number | null; closed: boolean; status: "loading" | "ready" | "error" | "saving"; offline?: boolean; /** helyi módosítások száma (Drive-szinkronhoz) */ rev: number };
 
-let store: Store = { devices: [], years: [], year: null, closed: false, status: "loading" };
+let store: Store = { devices: [], years: [], year: null, closed: false, status: "loading", rev: 0 };
 let started = false;
 let saveTimer: ReturnType<typeof setTimeout> | undefined;
 const listeners = new Set<() => void>();
@@ -124,9 +124,9 @@ async function start() {
     }).subscribe();
   } catch { patchStore(cached ? { status: "ready", offline: true } : { status: "error" }); }
 }
-function set(next: State) {
+function set(next: State, bump = true) {
   if (store.closed || store.year == null) return;
-  patchStore({ devices: next.devices, workbook: next.workbook ?? store.workbook, status: "saving" });
+  patchStore({ devices: next.devices, workbook: next.workbook ?? store.workbook, status: "saving", ...(bump ? { rev: store.rev + 1 } : {}) });
   writeCache(true);
   clearTimeout(saveTimer);
   const year = store.year;
@@ -137,7 +137,7 @@ function set(next: State) {
   }, 600);
 }
 const state = { get devices() { return store.devices; } };
-const EMPTY: Store = { devices: [], years: [], year: null, closed: false, status: "loading" };
+const EMPTY: Store = { devices: [], years: [], year: null, closed: false, status: "loading", rev: 0 };
 export function useFleet() {
   return useSyncExternalStore(
     (l) => { listeners.add(l); void start(); return () => listeners.delete(l); },
@@ -170,8 +170,8 @@ export function lastOdometer(d: Device, m = 11) {
 }
 
 export const actions = {
-  replaceAll(devices: Device[], workbook?: WorkbookRef) { set({ devices, workbook }); },
-  setWorkbook(workbook: WorkbookRef) { set({ devices: state.devices, workbook }); },
+  replaceAll(devices: Device[], workbook?: WorkbookRef, bump = true) { set({ devices, workbook }, bump); },
+  setWorkbook(workbook: WorkbookRef) { set({ devices: state.devices, workbook }, false); },
   move(from: number, to: number) {
     const list = [...state.devices];
     const [it] = list.splice(from, 1);

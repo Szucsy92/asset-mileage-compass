@@ -18,12 +18,13 @@ async function explain(res: Response): Promise<string> {
   return `Drive hiba (${res.status}).`;
 }
 
-async function call(url: string, init: RequestInit = {}, retried = false): Promise<Response> {
-  const token = await getAccessToken();
+export type DriveOpts = { silent?: boolean };
+async function call(url: string, init: RequestInit = {}, o: DriveOpts & { retried?: boolean } = {}): Promise<Response> {
+  const token = await getAccessToken(!o.silent);
   const headers = new Headers(init.headers);
   headers.set("Authorization", `Bearer ${token}`);
   const res = await fetch(url, { ...init, headers });
-  if (res.status === 401 && !retried) { dropAccessToken(); return call(url, init, true); }
+  if (res.status === 401 && !o.retried) { dropAccessToken(); return call(url, init, { ...o, retried: true }); }
   if (!res.ok) throw new Error(await explain(res));
   return res;
 }
@@ -37,22 +38,23 @@ export async function searchXlsx(term: string): Promise<DriveFile[]> {
   return (data.files ?? []).map(toFile);
 }
 
-export async function getFileMeta(id: string): Promise<DriveFile> {
-  const res = await call(`${API}/files/${encodeURIComponent(id)}?fields=${encodeURIComponent(FIELDS)}&supportsAllDrives=true`);
+export async function getFileMeta(id: string, o: DriveOpts = {}): Promise<DriveFile> {
+  const res = await call(`${API}/files/${encodeURIComponent(id)}?fields=${encodeURIComponent(FIELDS)}&supportsAllDrives=true`, {}, o);
   return toFile((await res.json()) as ApiFile);
 }
 
-export async function downloadFile(id: string): Promise<{ blob: Blob; meta: DriveFile }> {
-  const meta = await getFileMeta(id);
-  const res = await call(`${API}/files/${encodeURIComponent(id)}?alt=media&supportsAllDrives=true`);
+export async function downloadFile(id: string, o: DriveOpts = {}): Promise<{ blob: Blob; meta: DriveFile }> {
+  const meta = await getFileMeta(id, o);
+  const res = await call(`${API}/files/${encodeURIComponent(id)}?alt=media&supportsAllDrives=true`, {}, o);
   return { blob: await res.blob(), meta };
 }
 
 /** A fájl tartalmának cseréje (ugyanaz a fájl és megosztás marad). Visszaadja az új módosítási időt. */
-export async function uploadFile(id: string, blob: Blob): Promise<string> {
+export async function uploadFile(id: string, blob: Blob, o: DriveOpts = {}): Promise<string> {
   const res = await call(
     `https://www.googleapis.com/upload/drive/v3/files/${encodeURIComponent(id)}?uploadType=media&supportsAllDrives=true&fields=modifiedTime`,
     { method: "PATCH", headers: { "Content-Type": XLSX_MIME }, body: blob },
+    o,
   );
   return ((await res.json()) as { modifiedTime: string }).modifiedTime;
 }

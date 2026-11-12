@@ -117,7 +117,7 @@ async function webSignIn(): Promise<Tokens> {
 
 let pending: Promise<string> | null = null;
 /** Érvényes hozzáférési token: lejáratkor frissít, szükség esetén bejelentkezteti a felhasználót */
-export function getAccessToken(): Promise<string> {
+export function getAccessToken(interactive = true): Promise<string> {
   if (!driveConfigured()) return Promise.reject(new Error(driveSetupMessage()));
   pending ??= (async () => {
     try {
@@ -131,6 +131,7 @@ export function getAccessToken(): Promise<string> {
         }
         write(null);
       }
+      if (!interactive) throw new Error("Nincs bejelentkezve a Google-fiókba.");
       const fresh = isNative() ? await nativeSignIn() : await webSignIn();
       write({ ...fresh, ...(fresh.refresh || !t?.refresh ? {} : { refresh: t.refresh }) });
       return fresh.access;
