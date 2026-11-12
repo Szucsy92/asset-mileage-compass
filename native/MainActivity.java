@@ -1,8 +1,13 @@
 package hu.technikaieszkoz.nyilvantartas;
 
+import android.content.ContentValues;
 import android.graphics.Color;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Environment;
+import android.provider.MediaStore;
+import android.util.Base64;
 import android.view.View;
 import android.view.Window;
 import android.view.WindowManager;
@@ -16,6 +21,10 @@ import androidx.core.view.WindowInsetsCompat;
 import androidx.core.view.WindowInsetsControllerCompat;
 
 import com.getcapacitor.BridgeActivity;
+
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.OutputStream;
 
 /**
  * Teljes képernyős (edge-to-edge) héj: az állapot- és a navigációs sáv átlátszó,
@@ -31,6 +40,39 @@ public class MainActivity extends BridgeActivity {
         @JavascriptInterface public float bottom() { return insetBottom; }
         @JavascriptInterface public float left() { return insetLeft; }
         @JavascriptInterface public float right() { return insetRight; }
+    }
+
+    /** window.NativeDownloads.save(fájlnév, base64): a fájlt a telefon Letöltések mappájába menti. */
+    public class NativeDownloads {
+        @JavascriptInterface
+        public String save(String fileName, String base64) {
+            try {
+                byte[] data = Base64.decode(base64, Base64.DEFAULT);
+                String safe = fileName.replaceAll("[\\\\/:*?\"<>|]", "_");
+                if (!safe.toLowerCase().endsWith(".xlsx")) safe += ".xlsx";
+                String mime = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+                if (Build.VERSION.SDK_INT >= 29) {
+                    ContentValues v = new ContentValues();
+                    v.put(MediaStore.Downloads.DISPLAY_NAME, safe);
+                    v.put(MediaStore.Downloads.MIME_TYPE, mime);
+                    v.put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS);
+                    Uri uri = getContentResolver().insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, v);
+                    if (uri == null) return "err:nem hozható létre a fájl";
+                    try (OutputStream os = getContentResolver().openOutputStream(uri)) {
+                        if (os == null) return "err:nem írható a fájl";
+                        os.write(data);
+                    }
+                } else {
+                    File dir = getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS);
+                    if (dir == null) return "err:nincs elérhető tárhely";
+                    dir.mkdirs();
+                    try (FileOutputStream os = new FileOutputStream(new File(dir, safe))) { os.write(data); }
+                }
+                return "ok:" + safe;
+            } catch (Exception e) {
+                return "err:" + e.getMessage();
+            }
+        }
     }
 
     @Override
@@ -57,6 +99,7 @@ public class MainActivity extends BridgeActivity {
 
         final WebView webView = getBridge().getWebView();
         webView.addJavascriptInterface(new NativeInsets(), "NativeInsets");
+        webView.addJavascriptInterface(new NativeDownloads(), "NativeDownloads");
 
         final float density = getResources().getDisplayMetrics().density;
         final View content = findViewById(android.R.id.content);
