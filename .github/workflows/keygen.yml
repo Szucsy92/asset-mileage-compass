@@ -1,0 +1,81 @@
+name: Egyszeri aláírókulcs készítése
+
+# Egyszer kell lefuttatni. Létrehoz egy Android aláírókulcsot (keystore),
+# és egy letölthető fájlba írja a GitHub-titkok értékeit.
+on:
+  workflow_dispatch:
+    inputs:
+      alias:
+        description: Kulcs álneve (KEY_ALIAS)
+        default: release
+        required: true
+      allow_public:
+        description: Publikus repónál is fusson (NEM ajánlott)
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  keygen:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Biztonsági ellenőrzés
+        env:
+          IS_PRIVATE: ${{ github.event.repository.private }}
+          ALLOW_PUBLIC: ${{ inputs.allow_public }}
+        run: |
+          if [ "$IS_PRIVATE" != "true" ] && [ "$ALLOW_PUBLIC" != "true" ]; then
+            echo "::error::A repo publikus: a kulcsfájl letölthető lenne bárki számára. Állítsd privátra, vagy pipáld be az allow_public opciót (nem ajánlott)."
+            exit 1
+          fi
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Kulcs generálása
+        env:
+          KEY_ALIAS: ${{ inputs.alias }}
+        run: |
+          set -euo pipefail
+          PASS=$(openssl rand -hex 16)
+          echo "::add-mask::$PASS"
+          mkdir -p out
+          keytool -genkeypair -v \
+            -keystore out/release.jks -storetype PKCS12 \
+            -alias "$KEY_ALIAS" -keyalg RSA -keysize 4096 -validity 10000 \
+            -storepass "$PASS" -keypass "$PASS" \
+            -dname "CN=Android Release, O=Personal, C=HU" > /dev/null
+          B64=$(base64 -w0 out/release.jks)
+          echo "::add-mask::$B64"
+          CERT=$(keytool -list -v -keystore out/release.jks -storepass "$PASS" -alias "$KEY_ALIAS" \
+            | awk -F'SHA256: ' '/SHA256:/ {print $2; exit}' | tr -d ':[:space:]' | tr 'A-F' 'a-f')
+          test -n "$CERT"
+          SHA1=$(keytool -list -v -keystore out/release.jks -storepass "$PASS" -alias "$KEY_ALIAS" \
+            | awk -F'SHA1: ' '/SHA1:/ {print $2; exit}' | tr -d '[:space:]')
+          {
+            echo "ANDROID_KEYSTORE_BASE64=$B64"
+            echo "ANDROID_KEYSTORE_PASSWORD=$PASS"
+            echo "ANDROID_KEY_ALIAS=$KEY_ALIAS"
+            echo "ANDROID_KEY_PASSWORD=$PASS"
+            echo "ANDROID_SIGNING_CERT_SHA256=$CERT"
+          } > out/github-secrets.txt
+          {
+            echo "### Kulcs elkészült"
+            echo ""
+            echo "Tanúsítvány SHA-256 (ANDROID_SIGNING_CERT_SHA256): \`$CERT\`"
+            echo ""
+            echo "SHA-1 (a Google Android OAuth-klienshez): \`$SHA1\`"
+            echo ""
+            echo "A titkokat az **Artifacts** részben letölthető \`signing-keys\` csomag tartalmazza."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: signing-keys
+          path: out/
+          retention-days: 1
