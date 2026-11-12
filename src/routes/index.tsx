@@ -91,14 +91,37 @@ function Index() {
   const [driveOpen, setDriveOpen] = useState(false);
   const [signedIn, setSignedIn] = useState(false);
   const [driveSync, setDriveSync] = useState<{ state: "idle" | "saving" | "ok" | "error"; msg?: string }>({ state: "idle" });
+  const [yearFile, setYearFile] = useState<{ year: number; ref: WorkbookRef } | null>(null);
+  const [fileState, setFileState] = useState<{ state: "idle" | "searching" | "missing" | "error"; msg?: string }>({ state: "idle" });
+  const [reload, setReload] = useState(0);
   const syncedRev = useRef(0);
+  /** Az éppen megnyitott év táblázata a Drive-on (az év kiválasztása = a táblázat kiválasztása) */
+  const yf = yearFile && yearFile.year === year ? yearFile.ref : null;
 
   useEffect(() => { setSignedIn(isSignedIn()); }, [xlsOpen]);
 
+  // A közös mappában az évszámot tartalmazó .xlsx fájlt keresi meg az adott évhez
+  useEffect(() => {
+    if (year == null || !signedIn) { setFileState({ state: "idle" }); return; }
+    let stale = false;
+    const y = year;
+    setFileState({ state: "searching" });
+    void (async () => {
+      try {
+        const { searchXlsx } = await import("@/lib/drive");
+        const hit = (await searchXlsx("", undefined, { silent: true })).find((f) => f.name.includes(String(y)));
+        if (stale) return;
+        if (hit) { setYearFile({ year: y, ref: { path: "", name: hit.name, driveId: hit.id } }); setFileState({ state: "idle" }); }
+        else { setYearFile((p) => (p?.year === y ? p : null)); setFileState({ state: "missing" }); }
+      } catch (error) { if (!stale) setFileState({ state: "error", msg: error instanceof Error ? error.message : "A fájl keresése nem sikerült." }); }
+    })();
+    return () => { stale = true; };
+  }, [year, signedIn, reload]);
+
   // Automatikus szinkron: az app módosításai (rögzítés, törlés, szerkesztés) kis késéssel a Drive-fájlba kerülnek
   useEffect(() => {
-    if (!rev || rev === syncedRev.current || closed || year == null || !workbook?.driveId || !isSignedIn()) return;
-    const ref = workbook, y = year, devs = devices, r = rev;
+    if (!rev || rev === syncedRev.current || closed || year == null || !yf?.driveId || !isSignedIn()) return;
+    const ref = yf, y = year, devs = devices, r = rev;
     const timer = setTimeout(() => {
       driveQueue = driveQueue.catch(() => undefined).then(async () => {
         setDriveSync({ state: "saving" });
@@ -111,7 +134,7 @@ function Index() {
       });
     }, 4000);
     return () => clearTimeout(timer);
-  }, [rev, devices, workbook, closed, year]);
+  }, [rev, devices, yf, closed, year]);
 
   const guarded = async (fn: () => Promise<void>) => {
     setXlsOpen(false); setExcelBusy(true);
@@ -129,13 +152,15 @@ function Index() {
     alert(`Kész: ${r.updated} eszköz frissítve, ${r.added} új eszköz hozzáadva.`);
   }
   const signInNow = () => guarded(async () => { await getAccessToken(); });
+  /** Másik fájl választása az évhez (kivétel: csak ezen az eszközön, az újrakeresésig érvényes) */
   const pickDrive = (f: DriveFile) => {
     setDriveOpen(false);
     void guarded(async () => {
+      if (year == null) return;
       const ref: WorkbookRef = { path: "", name: f.name, driveId: f.id };
-      actions.setWorkbook(ref);
+      setYearFile({ year, ref });
       setDriveSync({ state: "idle" });
-      if (!confirm(`„${f.name}” kiválasztva.\n\nOK = a fájl adatait beolvasom az appba\nMégse = csak kiválasztom; az app a következő módosításnál írja a fájlba`)) return;
+      if (!confirm(`„${f.name}” lesz a(z) ${year}. év táblázata ezen az eszközön.\n\nOK = a fájl adatait beolvasom az appba\nMégse = csak kiválasztom`)) return;
       const { downloadFile } = await import("@/lib/drive");
       const { blob, meta } = await downloadFile(f.id);
       await importFile(new File([blob], meta.name), { ...ref, name: meta.name }, false);
@@ -143,21 +168,43 @@ function Index() {
   };
   /** Letöltés: Drive → app */
   const readDrive = () => guarded(async () => {
-    if (!workbook?.driveId) return;
+    if (!yf?.driveId) return;
     const { downloadFile } = await import("@/lib/drive");
-    const { blob, meta } = await downloadFile(workbook.driveId);
-    await importFile(new File([blob], meta.name), { ...workbook, name: meta.name }, false);
+    const { blob, meta } = await downloadFile(yf.driveId);
+    await importFile(new File([blob], meta.name), undefined, false);
   });
   /** Feltöltés: app → Drive (azonnal) */
   const saveDrive = () => guarded(async () => {
-    if (year == null || !workbook?.driveId) return;
+    if (year == null || !yf?.driveId) return;
     const { saveWorkbookToDrive } = await import("@/lib/exportXlsx");
-    await saveWorkbookToDrive(devices, year, workbook);
+    await saveWorkbookToDrive(devices, year, yf);
     syncedRev.current = rev; setDriveSync({ state: "ok" });
     alert("Feltöltve a Drive-ba.");
   });
-  const syncText = !workbook?.driveId ? "Nincs fájl kiválasztva"
-    : !signedIn ? "Jelentkezz be az automatikus szinkronhoz"
+  /** Új év: lezárás, majd az új évhez a Drive-mappában a következő évszámú táblázat (szükség esetén az előző másolata) */
+  const newYear = async () => {
+    const oldYear = year, oldFile = yf;
+    await closeYear();
+    if (oldYear == null || !oldFile?.driveId) return;
+    await guarded(async () => {
+      const ny = oldYear + 1;
+      const { searchXlsx, copyFile } = await import("@/lib/drive");
+      const existing = (await searchXlsx("")).find((f) => f.name.includes(String(ny)));
+      if (existing) { setYearFile({ year: ny, ref: { path: "", name: existing.name, driveId: existing.id } }); return; }
+      if (!confirm(`Nincs ${ny}-es táblázat a Drive-mappában. Létrehozzam a(z) „${oldFile.name}” másolataként?`)) return;
+      const base = oldFile.name.replace(/\.xlsx$/i, "");
+      const name = (base.includes(String(oldYear)) ? base.replace(String(oldYear), String(ny)) : `${base} ${ny}`) + ".xlsx";
+      const f = await copyFile(oldFile.driveId!, name);
+      setYearFile({ year: ny, ref: { path: "", name: f.name, driveId: f.id } });
+      setFileState({ state: "idle" });
+      actions.touch();
+    });
+  };
+  const syncText = !signedIn ? "Jelentkezz be a szinkronhoz"
+    : fileState.state === "searching" ? "Táblázat keresése…"
+    : fileState.state === "missing" && !yf ? `Nincs ${year}-es táblázat a közös mappában`
+    : fileState.state === "error" ? `Hiba: ${fileState.msg ?? ""}`
+    : !yf ? "Nincs táblázat kiválasztva"
     : closed ? "Lezárt év: nincs szinkron"
     : driveSync.state === "saving" ? "Szinkron: mentés…"
     : driveSync.state === "error" ? `Szinkron hiba: ${driveSync.msg ?? ""}`
@@ -203,7 +250,7 @@ function Index() {
                 <div role="menu" className="absolute right-0 top-full z-50 mt-1 w-64 overflow-hidden rounded-lg border bg-background p-1 shadow-2xl animate-in fade-in zoom-in-95">
                   <div className="truncate px-2 pb-0.5 pt-2 text-[10px] uppercase tracking-wider text-muted-foreground">Bejelentkezés</div>
                   {signedIn ? (
-                    <Button role="menuitem" variant="ghost" className="h-auto w-full justify-start px-2 py-2 text-xs" onClick={() => { signOut(); setSignedIn(false); setXlsOpen(false); }}>
+                    <Button role="menuitem" variant="ghost" className="h-auto w-full justify-start px-2 py-2 text-xs" onClick={() => { signOut(); setSignedIn(false); setYearFile(null); setXlsOpen(false); }}>
                       <LogOut className="size-4" /><span className="truncate">Kijelentkezés ({signedInEmail() ?? "Google"})</span>
                     </Button>
                   ) : (
@@ -211,17 +258,20 @@ function Index() {
                       <LogIn className="size-4" />Bejelentkezés Google-fiókkal
                     </Button>
                   )}
-                  <div className="truncate px-2 pb-0.5 pt-2 text-[10px] uppercase tracking-wider text-muted-foreground">Fájl</div>
-                  <div className="truncate px-2 pb-1 text-xs">{workbook?.driveId ? workbook.name : "Nincs fájl kiválasztva"}</div>
-                  <Button role="menuitem" variant="ghost" disabled={closed} onClick={() => { setXlsOpen(false); setDriveOpen(true); }} className="h-auto w-full justify-start px-2 py-2 text-xs">
-                    <Cloud className="size-4" />Fájl betöltése (Drive)
+                  <div className="truncate px-2 pb-0.5 pt-2 text-[10px] uppercase tracking-wider text-muted-foreground">Táblázat ({year}. év)</div>
+                  <div className="truncate px-2 pb-1 text-xs">{yf ? yf.name : "—"}</div>
+                  <div className={`px-2 pb-1 text-[10px] ${fileState.state === "error" || driveSync.state === "error" ? "text-destructive" : "text-muted-foreground"}`}>{syncText}</div>
+                  <Button role="menuitem" variant="ghost" disabled={!signedIn} onClick={() => { setReload((n) => n + 1); setXlsOpen(false); }} className="h-auto w-full justify-start px-2 py-2 text-xs">
+                    <Cloud className="size-4" />Táblázat keresése újra
                   </Button>
-                  <div className={`px-2 pb-1 text-[10px] ${driveSync.state === "error" ? "text-destructive" : "text-muted-foreground"}`}>{syncText}</div>
+                  <Button role="menuitem" variant="ghost" disabled={!signedIn} onClick={() => { setXlsOpen(false); setDriveOpen(true); }} className="h-auto w-full justify-start px-2 py-2 text-xs">
+                    <Cloud className="size-4" />Másik fájl választása…
+                  </Button>
                   <div className="truncate px-2 pb-0.5 pt-2 text-[10px] uppercase tracking-wider text-muted-foreground">Feltöltés és letöltés</div>
-                  <Button role="menuitem" variant="ghost" disabled={!workbook?.driveId} onClick={() => void saveDrive()} className="h-auto w-full justify-start px-2 py-2 text-xs">
+                  <Button role="menuitem" variant="ghost" disabled={!yf} onClick={() => void saveDrive()} className="h-auto w-full justify-start px-2 py-2 text-xs">
                     <CloudUpload className="size-4" />Feltöltés a Drive-ba
                   </Button>
-                  <Button role="menuitem" variant="ghost" disabled={closed || !workbook?.driveId} onClick={() => void readDrive()} className="h-auto w-full justify-start px-2 py-2 text-xs">
+                  <Button role="menuitem" variant="ghost" disabled={closed || !yf} onClick={() => void readDrive()} className="h-auto w-full justify-start px-2 py-2 text-xs">
                     <CloudDownload className="size-4" />Letöltés a Drive-ból
                   </Button>
                   <div className="truncate px-2 pb-0.5 pt-2 text-[10px] uppercase tracking-wider text-muted-foreground">Telefon</div>
@@ -233,7 +283,7 @@ function Index() {
                     if (f && !closed) void guarded(() => importFile(f));
                     else setXlsOpen(false);
                   }} />
-                  <Button role="menuitem" variant="ghost" className="h-auto w-full justify-start px-2 py-2 text-xs" onClick={() => void guarded(async () => { const { exportWorkbook } = await import("@/lib/exportXlsx"); await exportWorkbook(devices, year, workbook); })}>
+                  <Button role="menuitem" variant="ghost" className="h-auto w-full justify-start px-2 py-2 text-xs" onClick={() => void guarded(async () => { const { exportWorkbook } = await import("@/lib/exportXlsx"); await exportWorkbook(devices, year, yf ?? workbook); })}>
                     <Download className="size-4" />Mentés telefonra (.xlsx)
                   </Button>
                 </div>
@@ -242,7 +292,7 @@ function Index() {
           </div>
         )}
         {!closed && year != null && (
-          <button onClick={() => { if (confirm(`${year} lezárása: az összes eszköz teljes éve elmentésre és zárolásra kerül (később visszanézhető), majd független ${year + 1}. év indul üres hónapokkal. Az eszközök, okmányok és a nyitó állás átkerülnek. Folytatod?`)) void closeYear(); }}
+          <button onClick={() => { if (confirm(`${year} lezárása: az összes eszköz teljes éve elmentésre és zárolásra kerül (később visszanézhető), majd független ${year + 1}. év indul üres hónapokkal. Az eszközök, okmányok és a nyitó állás átkerülnek. Folytatod?`)) void newYear(); }}
             className="flex items-center gap-1 rounded-md bg-primary px-2 py-0.5 font-semibold text-primary-foreground"><CalendarPlus className="size-3" />Új év</button>
         )}
       </div>
