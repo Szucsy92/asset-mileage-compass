@@ -289,11 +289,12 @@ public class MainActivity extends BridgeActivity {
     public void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
         if (requestCode != AUTH_REQUEST) return;
-        if (resultCode != RESULT_OK || data == null) { notifyAuth(false, "", "", "CANCELED"); return; }
+        // Ha a Google ablak adatot adott vissza (siker vagy hibakód), azt feldolgozzuk; adat nélkül a felhasználó bezárta
+        if (data == null) { notifyAuth(false, "", "", resultCode == RESULT_CANCELED ? "CANCELED" : "RESULT_" + resultCode); return; }
         try {
             deliverAuth(Identity.getAuthorizationClient(this).getAuthorizationResultFromIntent(data));
         } catch (ApiException e) {
-            notifyAuth(false, "", "", String.valueOf(e.getMessage()));
+            notifyAuth(false, "", "", "API " + e.getStatusCode() + ": " + e.getMessage());
         }
     }
 
