@@ -41,6 +41,29 @@ describe("Original workbook", () => {
     expect(restored?.docs[0]).toMatchObject({ expiry: "2027-01-01", hasNumber: false, hasDate: true });
     expect(restored?.services?.[0]?.interval).toBe(10000);
   });
+  it("pótolja a hátralévő km képleteit a régi sablonban, és a meglévőket nem bántja", async () => {
+    const readBack = async (data: ArrayBuffer) => {
+      const blob = await buildWorkbook([device], 2026, data);
+      const buffer = await new Promise<ArrayBuffer>((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(reader.result as ArrayBuffer); reader.onerror = reject; reader.readAsArrayBuffer(blob); });
+      return XLSX.read(buffer, { type: "array", sheetStubs: true }).Sheets["Január"];
+    };
+    const old = XLSX.read(template(), { type: "array", cellFormula: true });
+    const sheet = old.Sheets["Január"]!;
+    sheet["AR14"] = { t: "n", f: "IF(ISBLANK(B14),+(AR13),C14)", v: 0 };
+    sheet["E9"] = { t: "e", f: "#REF!", v: 23 };
+    sheet["!ref"] = "A1:AR46";
+    const patched = XLSX.write(old, { type: "array", bookType: "xlsx" }) as ArrayBuffer;
+    const out = await readBack(patched);
+    expect(out?.["F4"]?.f).toBe('IF(E4>0,E4-D46,"")');
+    expect(out?.["E8"]?.f).toBe('IF(E9>0,E9-AR44,"")');
+    expect(out?.["H4"]?.v).toBe("hátra");
+    expect(out?.["F8"]?.v).toBe("km hátra");
+    expect(out?.["E9"]?.v).toBe(60000);
+    expect(out?.["E9"]?.f).toBeUndefined();
+    expect(out?.["E4"]?.v).toBe(10000);
+    // az első fájl nélküli (AR14 nélküli) sablonban nem jön létre képlet
+    expect((await readBack(template()))?.["F4"]?.f).toBeUndefined();
+  });
   it("preserves manual order and existing extras when the monthly upload lacks them", async () => {
     const parsed = await parseWorkbook(asFile(template()));
     const second = { ...device, id: "b", plate: "OTHER" };
