@@ -87,6 +87,16 @@ function Index() {
   const [xlsOpen, setXlsOpen] = useState(false);
   const [upOpen, setUpOpen] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  const xlsRef = useRef<HTMLDivElement>(null);
+  // A menü bármely máshová koppintásra vagy Escape-re bezárul (a gomb saját koppintása kivétel)
+  useEffect(() => {
+    if (!xlsOpen) return;
+    const away = (e: Event) => { if (!xlsRef.current?.contains(e.target as Node)) setXlsOpen(false); };
+    const esc = (e: KeyboardEvent) => { if (e.key === "Escape") setXlsOpen(false); };
+    document.addEventListener("pointerdown", away, true);
+    document.addEventListener("keydown", esc);
+    return () => { document.removeEventListener("pointerdown", away, true); document.removeEventListener("keydown", esc); };
+  }, [xlsOpen]);
   const [excelBusy, setExcelBusy] = useState(false);
   const [signedIn, setSignedIn] = useState(false);
   const [driveSync, setDriveSync] = useState<{ state: "idle" | "saving" | "ok" | "error"; msg?: string }>({ state: "idle" });
@@ -293,14 +303,13 @@ function Index() {
           {note || (status === "loading" ? "betöltés…" : status === "saving" ? "mentés…" : status === "error" ? "hiba – nincs mentve" : closed ? "lezárt év – csak olvasható" : driveText || (offline ? "helyi mód – mentve a telefonon" : "mentve"))}
         </span>
         {year != null && (
-          <div className="relative">
+          <div className="relative" ref={xlsRef}>
             <input ref={fileRef} type="file" accept=".xlsx,.xlsm,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" className="hidden" onChange={onPickFile} />
             <Button variant="outline" disabled={excelBusy || status === "loading" || status === "saving"} aria-expanded={xlsOpen} onClick={() => setXlsOpen((o) => !o)} className="h-auto gap-1 px-2 py-0.5 text-xs text-muted-foreground">
               <FileSpreadsheet className="size-3" />{excelBusy ? "Excel…" : "Excel"}<ChevronDown className={`size-3 transition-transform ${xlsOpen ? "rotate-180" : ""}`} />
             </Button>
             {xlsOpen && (
               <>
-                <div className="fixed inset-0 z-40" onClick={() => setXlsOpen(false)} />
                 <div role="menu" className="absolute right-0 top-full z-50 mt-1 w-56 overflow-hidden rounded-lg border bg-background p-1 shadow-2xl animate-in fade-in zoom-in-95">
                   {signedIn ? (
                     <Button role="menuitem" variant="ghost" className="h-auto w-full justify-start px-2 py-2 text-xs" onClick={() => { signOut(); setSignedIn(false); setYearFile(null); autoLoaded.current = ""; setXlsOpen(false); }}>
