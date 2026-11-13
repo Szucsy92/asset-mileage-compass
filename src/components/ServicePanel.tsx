@@ -6,7 +6,7 @@ import { serviceStats, type Service } from "@/lib/maintenance";
 export function ServicePanel({ dev, closed }: { dev: Device; closed: boolean }) {
   const services = dev.services ?? [];
   const reading = lastOdometer(dev);
-  const update = (id: string, patch: Partial<Service>) => actions.update(dev.id, { services: services.map(s => s.id === id ? { ...s, ...patch } : s) });
+  const update = (id: string, patch: Partial<Service>) => actions.update(dev.id, { services: services.map(s => { if (s.id !== id) return s; const next = { ...s, ...patch }; if (!("interval" in patch || "lastReading" in patch)) return next; const { dueAt: _table, ...rest } = next; return rest; }) });
   return <section className="flex flex-col gap-1 border-t border-border pt-2">
     <div className="flex items-center justify-between">
       <h2 className="flex items-center gap-1 font-display text-xs font-bold uppercase"><Wrench className="size-3" />Olajcsere, szerviz</h2>
