@@ -9,8 +9,8 @@ const MIN_SPEED = 3, MAX_SPEED = 10;
 const LONG_PRESS = 450, TAP_SLOP = 8;
 
 /** Ékezet-, kis/nagybetű-, szóköz- és kötőjel-független összehasonlítás */
-export const norm = (s: string) =>
-  s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[\s\-./·]+/g, "");
+import { norm } from "@/lib/text";
+export { norm };
 
 function score(item: string, q: string) {
   const n = norm(item);
