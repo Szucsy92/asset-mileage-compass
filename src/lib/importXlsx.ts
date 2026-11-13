@@ -1,10 +1,10 @@
 import { MONTHS, newDevice, uid, type Device, type Doc, type Row } from "@/lib/fleet";
-import type { Service } from "@/lib/maintenance";
+import { isOilService, oilDue, serviceDue, type Service } from "@/lib/maintenance";
 import { norm } from "@/components/WheelPicker";
 import { EXTRAS_MARKER } from "@/lib/workbookLayout";
 
 type Extras = { docs: Doc[]; services: Service[]; note?: string; muted?: boolean; unit?: Device["unit"]; norm?: number; yearlyAllowed?: number; status?: Device["status"]; complete?: boolean; removedFrom?: number };
-type Parsed = { plate: string; type: string; category: string; start: number | null; months: Record<number, Row[]>; extras?: Extras };
+type Parsed = { plate: string; type: string; category: string; start: number | null; months: Record<number, Row[]>; extras?: Extras; allowed?: number; oilDue?: number };
 
 const n = (v: unknown) => { const x = Number(v); return Number.isFinite(x) ? x : 0; };
 
@@ -14,6 +14,7 @@ export async function parseWorkbook(file: File): Promise<Parsed[]> {
   const wb = XLSX.read(await file.arrayBuffer(), { type: "array", sheetStubs: true });
   const byPlate = new Map<string, Parsed>();
   const order: string[] = [];
+  const tableAt = new Map<string, number>(); // a legkésőbbi hónap, amelyből az E4/E9 értéke származik
 
   wb.SheetNames.forEach((name, sheetIdx) => {
     const mi = MONTHS.findIndex((m) => norm(m) === norm(name));
@@ -34,6 +35,14 @@ export async function parseWorkbook(file: File): Promise<Parsed[]> {
         byPlate.set(norm(plate), d); order.push(norm(plate));
       }
       if (month === 0 || d.start == null) d.start = n(g(r + 12, c + 1));
+      // Évi km keret (E4) és olajcsere esedékes állása (E9): a legkésőbbi hónap értéke érvényes
+      const key = `${norm(plate)}`;
+      if (month >= (tableAt.get(key) ?? -1)) {
+        const a = n(g(r + 3, c + 3)), o = n(g(r + 8, c + 3));
+        if (a > 0) d.allowed = a;
+        if (o > 0) d.oilDue = o;
+        if (a > 0 || o > 0) tableAt.set(key, month);
+      }
       const rows: Row[] = [];
       for (let rr = r + 13; rr <= r + 43; rr++) {
         if (typeof g(rr, c - 1) === "string") break;
@@ -95,7 +104,18 @@ export async function parseWorkbook(file: File): Promise<Parsed[]> {
 
 /** Összefésülés: a fájlban szereplő eszközök minden hónapja frissül, okmányok/beállítások megmaradnak */
 const similar = (a: string, b: string) => { const x = norm(a), y = norm(b); return x.length >= 4 && y.length >= 4 && (x.includes(y) || y.includes(x)); };
-export function mergeImport(current: Device[], parsed: Parsed[], keepNames = true, ask: (p: Parsed, d: Device) => boolean = () => false) {
+/** Az olajcsere esedékes állása a táblázatból (E9): a meglévő olajcsere-ciklust felülírja, ha nincs, létrehozza */
+function withOilDue(d: Device, due?: number): Partial<Pick<Device, "services">> {
+  if (!due) return {};
+  const list = [...(d.services ?? [])];
+  const i = list.findIndex((s) => isOilService(s.name));
+  const cur = list[i];
+  if (cur) { if (serviceDue(cur) === due) return {}; list[i] = { ...cur, dueAt: due }; }
+  else list.push({ id: uid(), name: "Olajcsere", interval: 0, lastReading: 0, dueAt: due });
+  return { services: list };
+}
+
+export function mergeImport(current: Device[], parsed: Parsed[], keepNames = true, ask: (p: Parsed, d: Device) => boolean = () => false, applyTable = true) {
   let updated = 0, added = 0;
   const devices = [...current];
   for (const p of parsed) {
@@ -112,12 +132,13 @@ export function mergeImport(current: Device[], parsed: Parsed[], keepNames = tru
       // Törölt eszköznél a törlés hónapjától kezdve a fájl adatai nem számítanak; a másik felhasználó törlése átvételre kerül
       const gone = d.removedFrom ?? p.extras?.removedFrom;
       const months = Object.fromEntries(Object.entries(p.months).filter(([m, r]) => r.length && (gone == null || Number(m) < gone)));
-      devices[i] = { ...d, ...(d.removedFrom == null && gone != null ? { removedFrom: gone } : {}), ...(keepNames ? {} : { plate: p.plate, type: p.type || d.type, category: p.category || d.category }), startOdometer: p.start ?? d.startOdometer, months };
+      devices[i] = { ...d, ...(d.removedFrom == null && gone != null ? { removedFrom: gone } : {}), ...(keepNames ? {} : { plate: p.plate, type: p.type || d.type, category: p.category || d.category }), startOdometer: p.start ?? d.startOdometer, months, ...(applyTable ? { ...(p.allowed ? { yearlyAllowed: p.allowed } : {}), ...withOilDue(d, p.oilDue) } : {}) };
       updated++;
     } else {
       const ex = p.extras;
       const months = Object.fromEntries(Object.entries(p.months).filter(([m, r]) => r.length && (ex?.removedFrom == null || Number(m) < ex.removedFrom)));
-      devices.push({ ...newDevice(p.plate, p.type), category: p.category, startOdometer: p.start ?? 0, months, ...(ex ? { unit: ex.unit ?? "km", norm: ex.norm ?? 0, yearlyAllowed: ex.yearlyAllowed ?? 0, ...(ex.status ? { status: ex.status } : {}), ...(ex.note != null ? { note: ex.note } : {}), ...(ex.muted != null ? { muted: ex.muted } : {}), ...(ex.removedFrom != null ? { removedFrom: ex.removedFrom } : {}), ...(ex.complete || ex.docs.length ? { docs: ex.docs } : {}), services: ex.services } : {}) });
+      const created: Device = { ...newDevice(p.plate, p.type), category: p.category, startOdometer: p.start ?? 0, months, ...(ex ? { unit: ex.unit ?? "km", norm: ex.norm ?? 0, yearlyAllowed: ex.yearlyAllowed ?? 0, ...(ex.status ? { status: ex.status } : {}), ...(ex.note != null ? { note: ex.note } : {}), ...(ex.muted != null ? { muted: ex.muted } : {}), ...(ex.removedFrom != null ? { removedFrom: ex.removedFrom } : {}), ...(ex.complete || ex.docs.length ? { docs: ex.docs } : {}), services: ex.services } : {}) };
+      devices.push({ ...created, ...(p.allowed ? { yearlyAllowed: p.allowed } : {}), ...withOilDue(created, p.oilDue) });
       added++;
     }
   }
@@ -130,7 +151,7 @@ export function mergeImport(current: Device[], parsed: Parsed[], keepNames = tru
  * Az eszközök sorrendje és a meglévő nevek/értékek érintetlenek maradnak.
  */
 export function mergeFile(current: Device[], parsed: Parsed[], ask: (p: Parsed, d: Device) => boolean = () => false) {
-  const r = mergeImport(current, parsed, true, ask);
+  const r = mergeImport(current, parsed, true, ask, false);
   const same = (a: Row, b: Row) => a.docNo === b.docNo && a.odometer === b.odometer && a.km === b.km && a.fuel === b.fuel;
   const devices = r.devices.map((d) => {
     const old = current.find((c) => c.id === d.id);
@@ -163,6 +184,11 @@ export function mergeFile(current: Device[], parsed: Parsed[], ask: (p: Parsed, 
         ...(!old.yearlyAllowed && ex.yearlyAllowed ? { yearlyAllowed: ex.yearlyAllowed } : {}),
         ...(!old.status && ex.status ? { status: ex.status } : {}),
       };
+    }
+    // A táblázat E4/E9 értékei: csak a még üres mezőket töltik ki
+    if (p) {
+      if (!out.yearlyAllowed && p.allowed) out = { ...out, yearlyAllowed: p.allowed };
+      if (oilDue(out) == null && p.oilDue) out = { ...out, ...withOilDue(out, p.oilDue) };
     }
     return out;
   });

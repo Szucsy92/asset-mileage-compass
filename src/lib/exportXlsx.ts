@@ -1,3 +1,4 @@
+import { oilDue } from "./maintenance";
 import * as XLSX from "xlsx";
 import { MONTHS, type Device } from "@/lib/fleet";
 import { EXTRAS_MARKER, findBlocks, normalizePlate, sheetGrid, type WorkbookRef } from "./workbookLayout";
@@ -36,6 +37,7 @@ export async function buildWorkbook(devices: Device[], year: number, source: Arr
       write(block.row + 1, block.col + 3, d.type);
       write(block.row + 2, block.col + 3, d.category);
       write(block.row + 3, block.col + 3, d.yearlyAllowed || undefined);
+      write(block.row + 8, block.col + 3, oilDue(d) || undefined); // E9: olajcsere esedékes állása (a táblázat számolja a hátralévő km-t)
       if (m === 0) write(block.row + 12, block.col + 1, d.startOdometer);
       const gone = d.removedFrom != null && m >= d.removedFrom;
       const rows = gone ? [] : d.months[m] ?? [];
