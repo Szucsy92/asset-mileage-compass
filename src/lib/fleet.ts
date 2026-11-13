@@ -4,7 +4,9 @@ import seedData from "@/data/seed.json";
 import type { Service } from "./maintenance";
 import type { WorkbookRef } from "./workbookLayout";
 
-export const MONTHS = ["Január","Február","Március","Április","Május","Június","Július","Augusztus","Szeptember","Október","November","December"];
+import { MONTHS } from "./months";
+import { uid } from "./ids";
+export { MONTHS, uid };
 
 /** Okmány: a hasNumber/hasDate kapcsolók döntik el, mely mezők láthatók (alapértelmezés: mindkettő) */
 export type Doc = { id: string; name: string; number: string; expiry: string; hasNumber?: boolean; hasDate?: boolean };
@@ -32,7 +34,6 @@ export type Device = {
 type State = { devices: Device[]; workbook?: WorkbookRef | undefined };
 
 const KEY = "fleet-v2";
-export const uid = () => Math.random().toString(36).slice(2, 10);
 
 const defaultDocs = (): Doc[] => [
   { id: uid(), name: "Forgalmi engedély", number: "", expiry: "", hasNumber: true, hasDate: false },

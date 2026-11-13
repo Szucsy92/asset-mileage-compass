@@ -1,105 +1,13 @@
-import { MONTHS, newDevice, uid, type Device, type Doc, type Row } from "@/lib/fleet";
+import { newDevice, uid, type Device, type Row } from "@/lib/fleet";
 import { isOilService, oilDue, serviceDue, type Service } from "@/lib/maintenance";
-import { norm } from "@/components/WheelPicker";
-import { EXTRAS_MARKER } from "@/lib/workbookLayout";
+import { norm } from "@/lib/text";
+import { parseBuffer, type Extras, type Parsed } from "@/lib/xlsxParse";
 
-type Extras = { docs: Doc[]; services: Service[]; note?: string; muted?: boolean; unit?: Device["unit"]; norm?: number; yearlyAllowed?: number; status?: Device["status"]; complete?: boolean; removedFrom?: number };
-type Parsed = { plate: string; type: string; category: string; start: number | null; months: Record<number, Row[]>; extras?: Extras; allowed?: number; oilDue?: number };
+export type { Extras, Parsed };
 
-const n = (v: unknown) => { const x = Number(v); return Number.isFinite(x) ? x : 0; };
-
-/** Az eredeti nyilvántartó táblázat beolvasása (havi lapok, eszköz-blokkok) */
+/** Az eredeti nyilvántartó táblázat beolvasása fájlból (tesztekhez és tartalékként; az app háttérszálon olvas) */
 export async function parseWorkbook(file: File): Promise<Parsed[]> {
-  const XLSX = await import("xlsx");
-  const wb = XLSX.read(await file.arrayBuffer(), { type: "array", sheetStubs: true });
-  const byPlate = new Map<string, Parsed>();
-  const order: string[] = [];
-  const tableAt = new Map<string, number>(); // a legkésőbbi hónap, amelyből az E4/E9 értéke származik
-
-  wb.SheetNames.forEach((name, sheetIdx) => {
-    const mi = MONTHS.findIndex((m) => norm(m) === norm(name));
-    const month = mi >= 0 ? mi : sheetIdx;
-    if (month > 11) return;
-    const ws = wb.Sheets[name];
-    if (!ws) return;
-    const grid = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, raw: true, defval: null });
-    const g = (r: number, c: number) => grid[r]?.[c] ?? null;
-
-    grid.forEach((row, r) => row.forEach((cell, c) => {
-      if (typeof cell !== "string" || !cell.toLowerCase().includes("rendszám")) return;
-      const plate = String(g(r, c + 3) ?? "").trim();
-      if (!plate || g(r + 9, c) !== "Sorszám") return;
-      let d = byPlate.get(norm(plate));
-      if (!d) {
-        d = { plate, type: String(g(r + 1, c + 3) ?? "").replace(/\s+/g, " ").trim(), category: String(g(r + 2, c + 3) ?? "").trim(), start: null, months: {} };
-        byPlate.set(norm(plate), d); order.push(norm(plate));
-      }
-      if (month === 0 || d.start == null) d.start = n(g(r + 12, c + 1));
-      // Évi km keret (E4) és olajcsere esedékes állása (E9): a legkésőbbi hónap értéke érvényes
-      const key = `${norm(plate)}`;
-      if (month >= (tableAt.get(key) ?? -1)) {
-        const a = n(g(r + 3, c + 3)), o = n(g(r + 8, c + 3));
-        if (a > 0) d.allowed = a;
-        if (o > 0) d.oilDue = o;
-        if (a > 0 || o > 0) tableAt.set(key, month);
-      }
-      const rows: Row[] = [];
-      for (let rr = r + 13; rr <= r + 43; rr++) {
-        if (typeof g(rr, c - 1) === "string") break;
-        const s = g(rr, c);
-        const [km, tk, sk, f, m] = [1, 2, 3, 4, 5].map((k) => g(rr, c + k));
-        if ([s, km, f].some((v) => v != null && v !== 0)) {
-          let previous = rows.at(-1)?.odometer ?? n(g(r + 12, c + 1));
-          if (g(r + 12, c + 1) == null && !rows.length) {
-            previous = d.start ?? 0;
-            for (let prior = month - 1; prior >= 0; prior--) { const last = d.months[prior]?.at(-1); if (last) { previous = last.odometer; break; } }
-          }
-          rows.push({ id: uid(), docNo: s == null ? "" : String(s), odometer: n(km), km: tk == null ? Math.max(0, n(km) - previous) : n(tk), weightedKm: n(sk), fuel: n(f), diff: n(m), worksheetRow: rr - r - 13 });
-        }
-      }
-      d.months[month] = rows;
-    }));
-  });
-  // App-extra blokk beolvasása: a jelölő sor bárhol lehet (a táblázat alján, nem fix helyen)
-  const extrasSeen = new Set<string>();
-  for (const name of wb.SheetNames) {
-    const sheetExtras = new Set<string>();
-    const ws = wb.Sheets[name];
-    if (!ws) continue;
-    const grid = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, raw: true, defval: null });
-    const mi = grid.findIndex((row) => row?.some((c) => typeof c === "string" && c.trim() === EXTRAS_MARKER));
-    if (mi < 0) continue;
-    for (let r = mi + 2; r < grid.length; r++) {
-      const row = grid[r];
-      const plate = String(row?.[0] ?? "").trim();
-      const kind = String(row?.[1] ?? "").trim();
-      if (!plate || !kind) continue;
-      if (kind !== "havi adat" && kind !== "havi adatok" && extrasSeen.has(norm(plate))) continue;
-      sheetExtras.add(norm(plate));
-      let d = byPlate.get(norm(plate));
-      if (!d) { d = { plate, type: "", category: "", start: null, months: {} }; byPlate.set(norm(plate), d); order.push(norm(plate)); }
-      const ex = (d.extras ??= { docs: [], services: [] });
-      const v1 = String(row?.[2] ?? "").trim(), v2 = String(row?.[3] ?? "").trim(), v3 = String(row?.[4] ?? "").trim(), v4 = String(row?.[5] ?? "").trim();
-      if (kind === "eszköz") { d.type = v1; d.category = v2; d.start = n(v3); }
-      else if (kind === "okmányok és szervizek") ex.complete = true;
-      else if (kind === "havi adatok") { const month = n(row?.[2]); if (month >= 0 && month < 12) d.months[month] = []; }
-      else if (kind === "havi adat") {
-        const month = n(row?.[2]);
-        if (month >= 0 && month < 12) (d.months[month] ??= []).push({ id: uid(), docNo: String(row?.[3] ?? ""), odometer: n(row?.[4]), km: n(row?.[5]), weightedKm: n(row?.[6]), fuel: n(row?.[7]), diff: n(row?.[8]), ...(row?.[9] !== "" && row?.[9] != null ? { worksheetRow: n(row?.[9]) } : {}) });
-      }
-      else if (kind === "beállítás") {
-        ex.unit = v1 === "üó" ? "üó" : "km";
-        ex.norm = n(v2); ex.yearlyAllowed = n(v3);
-        if (v4 === "H" || v4 === "NH" || v4 === "S") ex.status = v4;
-      } else if (kind === "megjegyzés") ex.note = v1;
-      else if (kind === "némítva") ex.muted = true;
-      else if (kind === "törölve") { const m = n(row?.[2]); if (m >= 0 && m < 12) ex.removedFrom = m; }
-      else if (kind === "okmány") ex.docs.push({ id: uid(), name: v1, number: v2, expiry: /^\d{4}-\d{2}-\d{2}$/.test(v3) ? v3 : "", hasNumber: v4[0] !== "0", hasDate: v4[1] !== "0" });
-      else if (kind === "szerviz") ex.services.push({ id: uid(), name: v1, interval: n(v2), lastReading: n(v3) });
-    }
-    for (const plate of sheetExtras) extrasSeen.add(plate);
-  }
-  return order.flatMap((p) => { const d = byPlate.get(p); return d ? [d] : []; });
+  return parseBuffer(await file.arrayBuffer());
 }
 
 /** Összefésülés: a fájlban szereplő eszközök minden hónapja frissül, okmányok/beállítások megmaradnak */
@@ -193,4 +101,29 @@ export function mergeFile(current: Device[], parsed: Parsed[], ask: (p: Parsed, 
     return out;
   });
   return { devices, updated: r.updated, added: r.added };
+}
+
+/**
+ * Háttérben betöltött Drive-adat beillesztése az időközben szerkesztett app-állapotba.
+ * base: az állapot a betöltés indulásakor; current: a mostani; merged: a base + a fájl összefésülve.
+ * Ami a betöltés alatt nem változott az appban, az a fájl szerinti értéket kapja; amit időközben szerkesztettél, az megmarad.
+ */
+export function reconcileRefresh(base: Device[], current: Device[], merged: Device[]): Device[] {
+  const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+  const strip = (d: Device) => { const { months: _m, ...rest } = d; return rest; };
+  const out = current.map((cur) => {
+    const old = base.find((b) => b.id === cur.id);
+    const next = merged.find((m) => m.id === cur.id);
+    if (!old || !next) return cur;
+    const fields = same(strip(old), strip(cur)) ? strip(next) : strip(cur);
+    const months: Record<number, Row[]> = {};
+    for (let m = 0; m < 12; m++) {
+      const rows = same(old.months[m] ?? [], cur.months[m] ?? []) ? next.months[m] : cur.months[m];
+      if (rows?.length) months[m] = rows;
+    }
+    return { ...fields, months } as Device;
+  });
+  // A fájlból újonnan érkezett eszközök (még nincsenek az appban)
+  for (const m of merged) if (!current.some((c) => c.id === m.id) && !base.some((b) => b.id === m.id)) out.push(m);
+  return out;
 }
