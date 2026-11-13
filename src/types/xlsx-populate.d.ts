@@ -3,6 +3,8 @@ declare module "xlsx-populate/browser/xlsx-populate-no-encryption.min.js" {
     value(): unknown;
     value(value: unknown): Cell;
     formula(): string | undefined;
+    formula(value: string): Cell;
+    clear(): Cell;
     style(value: Record<string, unknown>): Cell;
   }
   interface Sheet { cell(row: number, col: number): Cell }
