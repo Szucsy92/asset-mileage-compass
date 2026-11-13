@@ -7,7 +7,7 @@ import type { WorkbookRef } from "@/lib/workbookLayout";
 import { WheelPicker } from "@/components/WheelPicker";
 import { Button } from "@/components/ui/button";
 import { ServicePanel } from "@/components/ServicePanel";
-import { compareDeadlines } from "@/lib/maintenance";
+import { compareDeadlines, isOilService, serviceStats, yearStats } from "@/lib/maintenance";
 import {
   MONTHS, useFleet, actions, newDevice, latestUpTo, monthStats, cumulative, daysLeft, expiryState, uid, lastOdometer, openYear, closeYear,
   type Device, type Row,
@@ -257,9 +257,27 @@ function Index() {
   const dev = shown.find((d) => d.id === devId);
   const devIndex = Math.max(0, shown.findIndex((d) => d.id === devId));
 
-  const alerts = devices.filter((d) => d.removedFrom == null).flatMap((d) =>
+  const activeDevices = devices.filter((d) => d.removedFrom == null);
+  const docAlerts: Alert[] = activeDevices.flatMap((d) =>
     d.docs.map((doc) => ({ d, doc, days: daysLeft(doc.expiry) })).filter((x) => x.days != null && x.days <= 30),
-  ).sort((a, b) => compareDeadlines(a.days ?? 0, b.days ?? 0));
+  ).sort((a, b) => compareDeadlines(a.days ?? 0, b.days ?? 0)).map(({ d, doc, days }) => ({
+    key: `${d.id}-${doc.id}`, d, name: doc.name, bad: (days ?? 0) < 0,
+    detail: `${doc.expiry.replaceAll("-", ".")}. (${(days ?? 0) < 0 ? `lejárt ${-(days ?? 0)} napja` : days === 0 ? "ma jár le" : `${days} nap`})`,
+  }));
+  // Olajcsere és éves km keret: ugyanaz a számítás, mint a táblázat „hátra” celláiban (E9 − km-állás, E4 − éves km)
+  const kmLine = (remaining: number, unit: string) => remaining < 0 ? `túllépve ${(-remaining).toLocaleString("hu-HU")} ${unit}` : `hátra ${remaining.toLocaleString("hu-HU")} ${unit}`;
+  const kmAlerts: Alert[] = activeDevices.flatMap((d): Alert[] => {
+    const out: Alert[] = [];
+    const oil = (d.services ?? []).find((x) => isOilService(x.name));
+    if (oil) {
+      const st = serviceStats(oil, lastOdometer(d), d.unit);
+      if (st.remaining != null && st.state !== "ok" && st.state !== "none") out.push({ key: `${d.id}-oil`, d, name: oil.name, bad: st.state === "overdue", detail: `${kmLine(st.remaining, d.unit)} · esedékes: ${st.due?.toLocaleString("hu-HU")}` });
+    }
+    const ys = yearStats(d.yearlyAllowed, cumulative(d, 11).km, d.unit);
+    if (ys.remaining != null && ys.state !== "ok" && ys.state !== "none") out.push({ key: `${d.id}-year`, d, name: "Éves km keret", bad: ys.state === "overdue", detail: kmLine(ys.remaining, d.unit) });
+    return out;
+  });
+  const alerts: Alert[] = [...docAlerts, ...kmAlerts].sort((a, b) => Number(b.bad) - Number(a.bad));
 
   return (
     <main className={`mx-auto flex h-[100svh] max-w-xl flex-col gap-2 overflow-hidden pl-[calc(0.5rem+var(--safe-left))] pr-[calc(0.5rem+var(--safe-right))] pt-[calc(0.5rem+var(--safe-top))] ${alerts.length ? "pb-[calc(2.75rem+var(--safe-bottom))]" : "pb-[calc(0.5rem+var(--safe-bottom))]"}`}>
@@ -590,34 +608,32 @@ function StatusRow({ dev }: { dev: Device }) {
   );
 }
 
-type Alert = { d: Device; doc: { id: string; name: string; expiry: string }; days: number | null };
+type Alert = { key: string; d: Device; name: string; detail: string; bad: boolean };
 function ExpiryBar({ alerts, onPick }: { alerts: Alert[]; onPick: (id: string) => void }) {
   const [open, setOpen] = useState(false);
   if (!alerts.length) return null;
-    const line = (a: Alert) => (
+  const line = (a: Alert) => (
     <>
-      <span className="font-mono font-bold">{a.d.plate}</span> · {a.doc.name} ·{" "}
-      <span className="font-mono">{a.doc.expiry.replaceAll("-", ".")}.</span>{" "}
-      ({(a.days ?? 0) < 0 ? `lejárt ${-(a.days ?? 0)} napja` : a.days === 0 ? "ma jár le" : `${a.days} nap`})
+      <span className="font-mono font-bold">{a.d.plate}</span> · {a.name} · <span className="font-mono">{a.detail}</span>
     </>
   );
   return (
     <div className="fixed bottom-[max(0.5rem,var(--safe-bottom))] left-1/2 z-30 -translate-x-1/2">
       <Button variant="ghost" aria-expanded={open} onClick={() => setOpen(true)} className="glass-capsule flex h-7 items-center gap-1.5 rounded-full border border-destructive/60 px-4 py-1 text-xs font-semibold text-destructive">
-        <AlertTriangle className="size-3.5" />Lejáró vizsgák
+        <AlertTriangle className="size-3.5" />Esedékes
         <span className="rounded-full bg-destructive px-1.5 text-[10px] font-bold text-destructive-foreground">{alerts.length}</span>
       </Button>
       {open && createPortal(
         <>
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-          <div role="dialog" aria-modal="true" aria-label="Lejáró vizsgák" className="glass-bubble fixed bottom-[max(0.5rem,var(--safe-bottom))] left-1/2 z-50 w-[min(92vw,30rem)] origin-bottom overflow-hidden rounded-2xl border border-destructive/50 text-xs text-destructive">
+          <div role="dialog" aria-modal="true" aria-label="Esedékes tételek" className="glass-bubble fixed bottom-[max(0.5rem,var(--safe-bottom))] left-1/2 z-50 w-[min(92vw,30rem)] origin-bottom overflow-hidden rounded-2xl border border-destructive/50 text-xs text-destructive">
             <div className="flex items-center gap-1.5 border-b border-destructive/30 px-3 py-1.5 font-semibold">
-              <AlertTriangle className="size-3.5" />Lejáró vizsgák ({alerts.length})
+              <AlertTriangle className="size-3.5" />Esedékes tételek ({alerts.length})
               <Button variant="ghost" size="icon" aria-label="Bezárás" onClick={() => setOpen(false)} className="ml-auto size-6"><X /></Button>
             </div>
             <div className="no-scrollbar max-h-[45dvh] overflow-y-auto overscroll-contain">
               {alerts.map((a) => (
-                <Button variant="ghost" key={`${a.d.id}-${a.doc.id}`} onClick={() => { onPick(a.d.id); setOpen(false); }} className={`block h-auto w-full whitespace-normal break-words px-3 py-2 text-left text-xs odd:bg-destructive/10 ${(a.days ?? 0) >= 0 ? "text-warning" : "text-destructive"}`}>{line(a)}</Button>
+                <Button variant="ghost" key={a.key} onClick={() => { onPick(a.d.id); setOpen(false); }} className={`block h-auto w-full whitespace-normal break-words px-3 py-2 text-left text-xs odd:bg-destructive/10 ${a.bad ? "text-destructive" : "text-warning"}`}>{line(a)}</Button>
               ))}
             </div>
           </div>
