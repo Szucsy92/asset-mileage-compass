@@ -17,9 +17,6 @@ import android.view.WindowManager;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebView;
 
-import androidx.activity.result.ActivityResultLauncher;
-import androidx.activity.result.IntentSenderRequest;
-import androidx.activity.result.contracts.ActivityResultContracts;
 import androidx.core.content.FileProvider;
 import androidx.core.content.pm.PackageInfoCompat;
 import androidx.core.graphics.Insets;
@@ -54,7 +51,7 @@ import org.json.JSONObject;
  */
 public class MainActivity extends BridgeActivity {
 
-    private ActivityResultLauncher<IntentSenderRequest> authLauncher;
+    private static final int AUTH_REQUEST = 9047;
 
     /** A repó, amelynek a release-eiből frissíthet az app (a build tölti ki a GITHUB_REPOSITORY-ból). */
     private static final String RELEASE_REPO = "__RELEASE_REPO__";
@@ -261,7 +258,11 @@ public class MainActivity extends BridgeActivity {
                         if (!interactive) { notifyAuth(false, "", "", "UI_REQUIRED"); return; }
                         PendingIntent pi = result.getPendingIntent();
                         if (pi == null) { notifyAuth(false, "", "", "nincs engedélykérő ablak"); return; }
-                        authLauncher.launch(new IntentSenderRequest.Builder(pi.getIntentSender()).build());
+                        try {
+                            startIntentSenderForResult(pi.getIntentSender(), AUTH_REQUEST, null, 0, 0, 0);
+                        } catch (Exception e) {
+                            notifyAuth(false, "", "", String.valueOf(e.getMessage()));
+                        }
                     } else {
                         deliverAuth(result);
                     }
@@ -283,18 +284,22 @@ public class MainActivity extends BridgeActivity {
         notifyAuth(true, token, email, "");
     }
 
+    /** A Google engedélykérő ablak eredménye */
+    @Override
+    public void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode != AUTH_REQUEST) return;
+        if (resultCode != RESULT_OK || data == null) { notifyAuth(false, "", "", "CANCELED"); return; }
+        try {
+            deliverAuth(Identity.getAuthorizationClient(this).getAuthorizationResultFromIntent(data));
+        } catch (ApiException e) {
+            notifyAuth(false, "", "", String.valueOf(e.getMessage()));
+        }
+    }
+
     @Override
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-
-        authLauncher = registerForActivityResult(new ActivityResultContracts.StartIntentSenderForResult(), r -> {
-            if (r.getResultCode() != RESULT_OK || r.getData() == null) { notifyAuth(false, "", "", "CANCELED"); return; }
-            try {
-                deliverAuth(Identity.getAuthorizationClient(this).getAuthorizationResultFromIntent(r.getData()));
-            } catch (ApiException e) {
-                notifyAuth(false, "", "", String.valueOf(e.getMessage()));
-            }
-        });
 
         final Window window = getWindow();
         WindowCompat.setDecorFitsSystemWindows(window, false);
