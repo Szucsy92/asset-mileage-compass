@@ -158,6 +158,18 @@ jobs:
               s = s.replace("</application>", prov + "</application>", 1)
           open(p, "w", encoding="utf-8").write(s)
           PY
+          # Belső (böngésző nélküli) Google-bejelentkezéshez: Google Play-szolgáltatások hitelesítő könyvtár
+          python3 - <<'PY'
+          import re
+          p = "android/app/build.gradle"
+          s = open(p, encoding="utf-8").read()
+          dep = "    implementation 'com.google.android.gms:play-services-auth:21.2.0'\n"
+          if "play-services-auth" not in s:
+              s, n = re.subn(r"(dependencies\s*\{\n)", lambda m: m.group(1) + dep, s, count=1)
+              assert n == 1, "nincs dependencies blokk az app/build.gradle-ben"
+          open(p, "w", encoding="utf-8").write(s)
+          PY
+          grep -n "play-services-auth" android/app/build.gradle
           mkdir -p android/app/src/main/res/xml
           cat > android/app/src/main/res/xml/file_paths.xml <<'XML'
           <?xml version="1.0" encoding="utf-8"?>
