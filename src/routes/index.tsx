@@ -128,12 +128,15 @@ function Index() {
   /** A Drive-fájl beolvasása az appba kérdések nélkül (okmányok, beállítások, sorrend megmaradnak) */
   async function applyDriveFile(ref: WorkbookRef) {
     const { downloadFile } = await import("@/lib/drive");
+    const base = devicesRef.current; // az állapot a betöltés indulásakor
     const { blob, meta } = await downloadFile(ref.driveId!, { silent: true });
-    const { parseWorkbook, mergeImport } = await import("@/lib/importXlsx");
-    const parsed = await parseWorkbook(new File([blob], meta.name));
+    const { mergeImport, reconcileRefresh } = await import("@/lib/importXlsx");
+    const { parseBufferAsync } = await import("@/lib/xlsxWorkerClient"); // háttérszál: a felület közben használható marad
+    const parsed = await parseBufferAsync(await blob.arrayBuffer());
     if (!parsed.length) throw new Error("A táblázatban nem találtam eszközt.");
-    const r = mergeImport(devicesRef.current, parsed, true, () => false);
-    actions.replaceAll(r.devices, { ...ref, name: meta.name }, false);
+    const merged = mergeImport(base, parsed, true, () => false).devices;
+    // Amit közben szerkesztettél, megmarad; ami nem változott, az frissül a Drive-fájl szerint
+    actions.replaceAll(reconcileRefresh(base, devicesRef.current, merged), { ...ref, name: meta.name }, false);
   }
 
   // Bejelentkezés után: az adott év táblázatának megkeresése és azonnali betöltése, felhasználói beavatkozás nélkül
@@ -191,10 +194,11 @@ function Index() {
     return () => clearTimeout(timer);
   }, [rev, devices, yf, closed, year, reload]);
 
-  const guarded = async (fn: () => Promise<void>) => {
+  const guarded = async (fn: () => Promise<void>, label?: string) => {
     setXlsOpen(false); setExcelBusy(true);
+    if (label) setNote(label);
     try { await fn(); } catch (error) { alert(error instanceof Error ? error.message : "A művelet nem sikerült."); }
-    finally { setExcelBusy(false); setSignedIn(isSignedIn()); }
+    finally { setExcelBusy(false); if (label) setNote((n) => (n === label ? "" : n)); setSignedIn(isSignedIn()); }
   };
   const signInNow = () => guarded(async () => { await getAccessToken(); });
   /** Letöltés: az app adataival kitöltött táblázat fizikai mentése a telefon Letöltések mappájába */
@@ -202,27 +206,29 @@ function Index() {
     if (year == null) return;
     const { exportWorkbook } = await import("@/lib/exportXlsx");
     flash(await exportWorkbook(devices, year, yf ?? undefined));
-  });
+  }, "Letöltés fájlba…");
   /** Feltöltés fájlból: a telefonról választott táblázat felülírás nélkül beleolvad az appba, majd a Drive-fájlba */
   const onPickFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0]; e.target.value = "";
     if (!f || closed || year == null) return;
     void guarded(async () => {
-      const { parseWorkbook, mergeFile } = await import("@/lib/importXlsx");
-      const parsed = await parseWorkbook(f);
+      const { mergeFile, reconcileRefresh } = await import("@/lib/importXlsx");
+      const { parseBufferAsync } = await import("@/lib/xlsxWorkerClient");
+      const parsed = await parseBufferAsync(await f.arrayBuffer());
       if (!parsed.length) throw new Error("A fájlban nem találtam eszközt.");
-      const r = mergeFile(devicesRef.current, parsed, (p, d) => confirm(`A fájlban „${p.plate}" szerepel. Azonos ezzel az eszközzel: „${d.plate}"?`));
+      const base = devicesRef.current;
+      const r = mergeFile(base, parsed, (p, d) => confirm(`A fájlban „${p.plate}" szerepel. Azonos ezzel az eszközzel: „${d.plate}"?`));
       if (yf?.driveId && isSignedIn()) {
         const { saveWorkbookToDrive } = await import("@/lib/exportXlsx");
         await saveWorkbookToDrive(r.devices, year, yf);
-        actions.replaceAll(r.devices, undefined, false);
+        actions.replaceAll(reconcileRefresh(base, devicesRef.current, r.devices), undefined, false);
         syncedRev.current = rev; setDirty(year, false); setDriveSync({ state: "ok" });
         flash(`Beleolvasztva és feltöltve a Drive-ba (${r.updated} frissítve, ${r.added} új)`);
       } else {
         actions.replaceAll(r.devices, undefined, true);
         flash("Beleolvasztva, de nincs Drive-kapcsolat – a következő szinkronnál kerül fel");
       }
-    });
+    }, "Feltöltés fájlból…");
   };
   /** Feltöltés: app → Drive (azonnal) */
   const saveDrive = () => guarded(async () => {
@@ -231,7 +237,7 @@ function Index() {
     await saveWorkbookToDrive(devices, year, yf);
     syncedRev.current = rev; setDirty(year, false); setDriveSync({ state: "ok" });
     flash("Feltöltve a Drive-ba");
-  });
+  }, "Feltöltés a Drive-ra…");
   /** Új év: lezárás, majd az új évhez a Drive-mappában a következő évszámú táblázat (szükség esetén az előző másolata) */
   const newYear = async () => {
     const oldYear = year, oldFile = yf;
@@ -250,7 +256,7 @@ function Index() {
       actions.touch();
     });
   };
-  const driveText = !signedIn ? "" : fileState.state === "searching" ? "Drive: keresés…" : fileState.state === "loading" ? "Drive: betöltés…"
+  const driveText = !signedIn ? "" : fileState.state === "searching" ? "Drive: keresés…" : fileState.state === "loading" ? "Drive: betöltés…" : driveSync.state === "saving" ? "Drive: feltöltés…"
     : fileState.state === "error" ? (offline ? "" : "Drive hiba") : driveSync.state === "error" ? "Drive: szinkron vár" : "";
 
   useEffect(() => { setMonth(new Date().getMonth()); }, []);
