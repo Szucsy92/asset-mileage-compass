@@ -61,7 +61,32 @@ async function tokenRequest(body: Record<string, string>): Promise<TokenResponse
   return (await res.json()) as TokenResponse;
 }
 
+type NativeGoogle = { authorize: (interactive: boolean) => void };
+const nativeGoogle = () => (window as unknown as { GoogleAuth?: NativeGoogle }).GoogleAuth;
+
+/** Belső bejelentkezés (a Google Play-szolgáltatások ablaka az app fölött, böngésző nélkül). Hibakódok: CANCELED, UI_REQUIRED, egyéb. */
+function nativeAuthorize(interactive: boolean): Promise<Tokens> {
+  const bridge = nativeGoogle();
+  if (!bridge) return Promise.reject(new Error("NO_BRIDGE"));
+  const w = window as unknown as { __onGoogleAuth?: ((ok: boolean, access: string, email: string, err: string) => void) | undefined };
+  return new Promise<Tokens>((resolve, reject) => {
+    const timer = setTimeout(() => { w.__onGoogleAuth = undefined; reject(new Error("TIMEOUT")); }, 120_000);
+    w.__onGoogleAuth = (ok, access, email, err) => {
+      clearTimeout(timer); w.__onGoogleAuth = undefined;
+      if (ok && access) resolve({ access, expires: Date.now() + 55 * 60_000, ...(email ? { email } : {}) });
+      else reject(new Error(err || "ERROR"));
+    };
+    bridge.authorize(interactive);
+  });
+}
+
 async function nativeSignIn(): Promise<Tokens> {
+  if (nativeGoogle()) {
+    try { return await nativeAuthorize(true); } catch (e) {
+      if (e instanceof Error && e.message === "CANCELED") throw new Error("A bejelentkezést megszakítottad.");
+      // Egyéb hiba (pl. nincs Play-szolgáltatás): tartalékként a böngészős bejelentkezés
+    }
+  }
   const plugins = cap()?.Plugins;
   const Browser = plugins?.Browser, App = plugins?.App;
   if (!Browser || !App) throw new Error("A bejelentkezéshez szükséges natív bővítmény hiányzik az APK-ból. Készíts új APK-t.");
@@ -132,6 +157,14 @@ export function getAccessToken(interactive = true): Promise<string> {
           return r.access_token;
         }
         write(null);
+      }
+      if (isNative() && nativeGoogle() && t) {
+        // Frissítő token nélkül (belső bejelentkezés): az engedély megújítása ablak nélkül történik
+        try {
+          const n = await nativeAuthorize(false);
+          write({ ...n, ...(n.email || !t.email ? {} : { email: t.email }) });
+          return n.access;
+        } catch { /* csendes megújítás nem sikerült: lent újra bejelentkeztetjük */ }
       }
       if (!interactive) throw new Error("Nincs bejelentkezve a Google-fiókba.");
       const fresh = isNative() ? await nativeSignIn() : await webSignIn();
