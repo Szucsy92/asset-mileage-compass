@@ -6,7 +6,7 @@ vi.mock("@/lib/fleet", () => ({
 }));
 vi.mock("@/lib/workbookStorage", () => ({ loadWorkbookTemplate: vi.fn() }));
 import { buildWorkbook } from "@/lib/exportXlsx";
-import { mergeImport, parseWorkbook } from "@/lib/importXlsx";
+import { mergeImport, parseWorkbook, reconcileRefresh } from "@/lib/importXlsx";
 import type { Device } from "@/lib/fleet";
 
 const row = { id: "r", docNo: "26", odometer: 56193, km: 3976, weightedKm: 0, fuel: 250, diff: 0, worksheetRow: 30 };
@@ -76,5 +76,17 @@ describe("Original workbook", () => {
     const parsed = await parseWorkbook(asFile(template()));
     parsed[0] = { ...parsed[0], plate: "ha00157" } as (typeof parsed)[number];
     expect(mergeImport([device], parsed)).toMatchObject({ updated: 1, added: 0 });
+  });
+});
+describe("háttérben betöltött adat beillesztése", () => {
+  it("a közben szerkesztett rész megmarad, a többi frissül, az új eszköz bekerül", () => {
+    const edited: Device = { ...device, months: { 0: [row], 1: [{ ...row, id: "u", docNo: "27" }] } }; // közben felvett februári sor
+    const file: Device = { ...device, yearlyAllowed: 12000, months: { 0: [{ ...row, km: 4000 }], 1: [{ ...row, id: "f", docNo: "99" }] } };
+    const added: Device = { ...device, id: "n", plate: "ÚJ" };
+    const out = reconcileRefresh([device], [edited], [file, added]);
+    expect(out[0]?.months[0]?.[0]?.km).toBe(4000);
+    expect(out[0]?.months[1]?.[0]?.docNo).toBe("27");
+    expect(out[0]?.yearlyAllowed).toBe(12000);
+    expect(out.map((d) => d.id)).toEqual(["d", "n"]);
   });
 });
