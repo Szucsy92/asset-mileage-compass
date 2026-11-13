@@ -28,17 +28,39 @@ export async function buildWorkbook(devices: Device[], year: number, source: Arr
       const d = devices.find((item) => normalizePlate(item.plate) === normalizePlate(block.plate));
       if (!d) continue;
       matched.add(d.id);
+      // Az eredeti fájl néhány E9 cellájában elromlott (#REF!) képlet van: ezt bevitelként kezeljük
+      const cleared = new Set<string>();
+      {
+        const cell = sheet.cell(block.row + 8, block.col + 3);
+        if (cell.formula() === "#REF!") { cell.clear(); cleared.add(XLSX.utils.encode_cell({ r: block.row + 7, c: block.col + 2 })); }
+      }
       // Formula cells remain formulas, including the monthly carry-forward totals.
       const write = (r: number, c: number, value: unknown) => {
         const address = XLSX.utils.encode_cell({ r: r - 1, c: c - 1 });
         const cell = sheet.cell(r, c);
-        if (!sourceSheet[address]?.f && !cell.formula()) cell.value(value);
+        if ((!sourceSheet[address]?.f || cleared.has(address)) && !cell.formula()) cell.value(value);
       };
       write(block.row + 1, block.col + 3, d.type);
       write(block.row + 2, block.col + 3, d.category);
       write(block.row + 3, block.col + 3, d.yearlyAllowed || undefined);
       write(block.row + 8, block.col + 3, oilDue(d) || undefined); // E9: olajcsere esedékes állása (a táblázat számolja a hátralévő km-t)
       if (m === 0) write(block.row + 12, block.col + 1, d.startOdometer);
+      // Hátralévő km (éves keret, olajcsere): a táblázat saját képlete. Ha a sablonban még nincs, pótoljuk.
+      // (A sárga/piros jelzés feltételes formázás, azt csak a kész táblázat tartalmazza.)
+      const L = (k: number) => XLSX.utils.encode_col(block.col - 1 + k);
+      let helper: string | null = null;
+      for (let k = 8; k < 60 && !helper; k++) {
+        const f = sourceSheet[XLSX.utils.encode_cell({ r: block.row + 12, c: block.col - 1 + k })]?.f;
+        helper = (typeof f === "string" ? /^IF\(ISBLANK\([A-Z]+\d+\),\+\(([A-Z]+)\d+\),/.exec(f)?.[1] : null) ?? null;
+      }
+      if (helper) {
+        const free = (r: number, c: number) => { const cell = sheet.cell(r, c); return cell.value() == null && !cell.formula(); };
+        const yearly = `${L(3)}${block.row + 3}`, oil = `${L(3)}${block.row + 8}`;
+        if (free(block.row + 3, block.col + 4)) sheet.cell(block.row + 3, block.col + 4).formula(`IF(${yearly}>0,${yearly}-${L(2)}${block.row + 45},"")`).style({ numberFormat: "#,##0" });
+        if (free(block.row + 7, block.col + 3)) sheet.cell(block.row + 7, block.col + 3).formula(`IF(${oil}>0,${oil}-${helper}${block.row + 43},"")`).style({ numberFormat: "#,##0" });
+        if (free(block.row + 3, block.col + 6)) sheet.cell(block.row + 3, block.col + 6).value("hátra");
+        if (free(block.row + 7, block.col + 4)) sheet.cell(block.row + 7, block.col + 4).value("km hátra");
+      }
       const gone = d.removedFrom != null && m >= d.removedFrom;
       const rows = gone ? [] : d.months[m] ?? [];
       if (rows.length > 31) throw new Error(`${d.plate}: a havi 31 sor nem elég. A letöltés nem ír felül összesítőket.`);
