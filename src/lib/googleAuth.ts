@@ -83,7 +83,8 @@ function nativeAuthorize(interactive: boolean): Promise<Tokens> {
 async function nativeSignIn(): Promise<Tokens> {
   if (nativeGoogle()) {
     try { return await nativeAuthorize(true); } catch (e) {
-      if (e instanceof Error && e.message === "CANCELED") throw new Error("A bejelentkezést megszakítottad.");
+      // Bezárt vagy elbukott belső ablak: nem hagyjuk zsákutcában, felkínáljuk a böngészős bejelentkezést
+      if (e instanceof Error && e.message === "CANCELED" && !confirm("A belső bejelentkezés megszakadt. Megpróbáljam böngészős ablakban?")) throw new Error("A bejelentkezést megszakítottad.");
       // Egyéb hiba (pl. nincs Play-szolgáltatás): tartalékként a böngészős bejelentkezés
     }
   }
