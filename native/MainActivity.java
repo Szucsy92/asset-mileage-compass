@@ -1,5 +1,6 @@
 package hu.technikaieszkoz.nyilvantartas;
 
+import android.app.PendingIntent;
 import android.content.ContentValues;
 import android.content.Intent;
 import android.graphics.Color;
@@ -16,6 +17,9 @@ import android.view.WindowManager;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebView;
 
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.IntentSenderRequest;
+import androidx.activity.result.contracts.ActivityResultContracts;
 import androidx.core.content.FileProvider;
 import androidx.core.content.pm.PackageInfoCompat;
 import androidx.core.graphics.Insets;
@@ -25,10 +29,18 @@ import androidx.core.view.WindowInsetsCompat;
 import androidx.core.view.WindowInsetsControllerCompat;
 
 import com.getcapacitor.BridgeActivity;
+import com.google.android.gms.auth.api.identity.AuthorizationRequest;
+import com.google.android.gms.auth.api.identity.AuthorizationResult;
+import com.google.android.gms.auth.api.identity.Identity;
+import com.google.android.gms.auth.api.signin.GoogleSignInAccount;
+import com.google.android.gms.common.Scopes;
+import com.google.android.gms.common.api.ApiException;
+import com.google.android.gms.common.api.Scope;
 
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.OutputStream;
+import java.util.Arrays;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -41,6 +53,8 @@ import org.json.JSONObject;
  * a window.NativeInsets objektumon keresztül kapja meg.
  */
 public class MainActivity extends BridgeActivity {
+
+    private ActivityResultLauncher<IntentSenderRequest> authLauncher;
 
     /** A repó, amelynek a release-eiből frissíthet az app (a build tölti ki a GITHUB_REPOSITORY-ból). */
     private static final String RELEASE_REPO = "__RELEASE_REPO__";
@@ -219,9 +233,68 @@ public class MainActivity extends BridgeActivity {
         }
     }
 
+    /**
+     * Google-bejelentkezés az alkalmazáson belül (Google Play-szolgáltatások engedélykérő ablaka, böngésző nélkül).
+     * window.GoogleAuth.authorize(interaktív) → window.__onGoogleAuth(siker, token, e-mail, hiba)
+     */
+    public class GoogleAuthBridge {
+        @JavascriptInterface public void authorize(final boolean interactive) {
+            runOnUiThread(() -> startAuthorization(interactive));
+        }
+    }
+
+    private void notifyAuth(boolean ok, String token, String email, String error) {
+        final String js = "window.__onGoogleAuth&&window.__onGoogleAuth(" + ok + "," + JSONObject.quote(token) + ","
+            + JSONObject.quote(email) + "," + JSONObject.quote(error) + ")";
+        runOnUiThread(() -> getBridge().getWebView().evaluateJavascript(js, null));
+    }
+
+    private void startAuthorization(final boolean interactive) {
+        try {
+            AuthorizationRequest req = AuthorizationRequest.builder()
+                .setRequestedScopes(Arrays.asList(new Scope("https://www.googleapis.com/auth/drive"), new Scope(Scopes.EMAIL)))
+                .build();
+            Identity.getAuthorizationClient(this).authorize(req)
+                .addOnSuccessListener(result -> {
+                    if (result.hasResolution()) {
+                        // Első engedélyezés vagy fiókválasztás: a rendszer saját ablaka nyílik meg az app fölött
+                        if (!interactive) { notifyAuth(false, "", "", "UI_REQUIRED"); return; }
+                        PendingIntent pi = result.getPendingIntent();
+                        if (pi == null) { notifyAuth(false, "", "", "nincs engedélykérő ablak"); return; }
+                        authLauncher.launch(new IntentSenderRequest.Builder(pi.getIntentSender()).build());
+                    } else {
+                        deliverAuth(result);
+                    }
+                })
+                .addOnFailureListener(e -> notifyAuth(false, "", "", String.valueOf(e.getMessage())));
+        } catch (Exception e) {
+            notifyAuth(false, "", "", String.valueOf(e.getMessage()));
+        }
+    }
+
+    private void deliverAuth(AuthorizationResult result) {
+        String token = result.getAccessToken();
+        if (token == null || token.isEmpty()) { notifyAuth(false, "", "", "nincs hozzáférési token"); return; }
+        String email = "";
+        try {
+            GoogleSignInAccount acc = result.toGoogleSignInAccount();
+            if (acc != null && acc.getEmail() != null) email = acc.getEmail();
+        } catch (Exception ignored) { }
+        notifyAuth(true, token, email, "");
+    }
+
     @Override
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+
+        authLauncher = registerForActivityResult(new ActivityResultContracts.StartIntentSenderForResult(), r -> {
+            if (r.getResultCode() != RESULT_OK || r.getData() == null) { notifyAuth(false, "", "", "CANCELED"); return; }
+            try {
+                deliverAuth(Identity.getAuthorizationClient(this).getAuthorizationResultFromIntent(r.getData()));
+            } catch (ApiException e) {
+                notifyAuth(false, "", "", String.valueOf(e.getMessage()));
+            }
+        });
 
         final Window window = getWindow();
         WindowCompat.setDecorFitsSystemWindows(window, false);
@@ -245,6 +318,7 @@ public class MainActivity extends BridgeActivity {
         webView.addJavascriptInterface(new NativeInsets(), "NativeInsets");
         webView.addJavascriptInterface(new NativeDownloads(), "NativeDownloads");
         webView.addJavascriptInterface(new AndroidUpdater(), "AndroidUpdater");
+        webView.addJavascriptInterface(new GoogleAuthBridge(), "GoogleAuth");
 
         final float density = getResources().getDisplayMetrics().density;
         final View content = findViewById(android.R.id.content);
