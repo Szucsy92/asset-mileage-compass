@@ -1,5 +1,7 @@
 package hu.technikaieszkoz.nyilvantartas;
 
+import android.accounts.Account;
+import android.accounts.AccountManager;
 import android.app.PendingIntent;
 import android.content.ContentValues;
 import android.content.Intent;
@@ -28,6 +30,7 @@ import androidx.core.view.WindowInsetsControllerCompat;
 import com.getcapacitor.BridgeActivity;
 import com.google.android.gms.auth.api.identity.AuthorizationRequest;
 import com.google.android.gms.auth.api.identity.AuthorizationResult;
+import com.google.android.gms.auth.api.identity.ClearTokenRequest;
 import com.google.android.gms.auth.api.identity.Identity;
 import com.google.android.gms.auth.api.signin.GoogleSignInAccount;
 import com.google.android.gms.common.Scopes;
@@ -52,6 +55,7 @@ import org.json.JSONObject;
 public class MainActivity extends BridgeActivity {
 
     private static final int AUTH_REQUEST = 9047;
+    private static final int CHOOSE_ACCOUNT_REQUEST = 9048;
 
     /** A repó, amelynek a release-eiből frissíthet az app (a build tölti ki a GITHUB_REPOSITORY-ból). */
     private static final String RELEASE_REPO = "__RELEASE_REPO__";
@@ -235,8 +239,20 @@ public class MainActivity extends BridgeActivity {
      * window.GoogleAuth.authorize(interaktív) → window.__onGoogleAuth(siker, token, e-mail, hiba)
      */
     public class GoogleAuthBridge {
-        @JavascriptInterface public void authorize(final boolean interactive) {
-            runOnUiThread(() -> startAuthorization(interactive));
+        /** account: a már ismert fiók e-mail címe (csendes megújításhoz); üresen a felhasználó fiókot választ. */
+        @JavascriptInterface public void authorize(final boolean interactive, final String account) {
+            runOnUiThread(() -> {
+                if (interactive && (account == null || account.isEmpty())) chooseAccount();
+                else startAuthorization(interactive, account);
+            });
+        }
+        /** Kijelentkezés: a Google által tárolt hozzáférési token törlése, hogy a következő belépés újra fiókot kérjen. */
+        @JavascriptInterface public void signOut(final String token) {
+            if (token == null || token.isEmpty()) return;
+            runOnUiThread(() -> {
+                try { Identity.getAuthorizationClient(MainActivity.this).clearToken(ClearTokenRequest.builder().setToken(token).build()); }
+                catch (Exception ignored) { }
+            });
         }
     }
 
@@ -246,11 +262,24 @@ public class MainActivity extends BridgeActivity {
         runOnUiThread(() -> getBridge().getWebView().evaluateJavascript(js, null));
     }
 
-    private void startAuthorization(final boolean interactive) {
+    /** Fiókválasztó (a telefonon lévő Google-fiókok); minden bejelentkezésnél megjelenik. */
+    private void chooseAccount() {
         try {
-            AuthorizationRequest req = AuthorizationRequest.builder()
-                .setRequestedScopes(Arrays.asList(new Scope("https://www.googleapis.com/auth/drive"), new Scope(Scopes.EMAIL)))
-                .build();
+            Intent chooser = Build.VERSION.SDK_INT >= 26
+                ? AccountManager.newChooseAccountIntent(null, null, new String[]{"com.google"}, null, null, null, null)
+                : AccountManager.newChooseAccountIntent(null, null, new String[]{"com.google"}, false, null, null, null, null);
+            startActivityForResult(chooser, CHOOSE_ACCOUNT_REQUEST);
+        } catch (Exception e) {
+            startAuthorization(true, ""); // tartalék: a Google saját választója
+        }
+    }
+
+    private void startAuthorization(final boolean interactive, final String account) {
+        try {
+            AuthorizationRequest.Builder builder = AuthorizationRequest.builder()
+                .setRequestedScopes(Arrays.asList(new Scope("https://www.googleapis.com/auth/drive"), new Scope(Scopes.EMAIL)));
+            if (account != null && !account.isEmpty()) builder.setAccount(new Account(account, "com.google"));
+            AuthorizationRequest req = builder.build();
             Identity.getAuthorizationClient(this).authorize(req)
                 .addOnSuccessListener(result -> {
                     if (result.hasResolution()) {
@@ -288,6 +317,12 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == CHOOSE_ACCOUNT_REQUEST) {
+            String name = (resultCode == RESULT_OK && data != null) ? data.getStringExtra(AccountManager.KEY_ACCOUNT_NAME) : null;
+            if (name == null || name.isEmpty()) notifyAuth(false, "", "", "CANCELED");
+            else startAuthorization(true, name);
+            return;
+        }
         if (requestCode != AUTH_REQUEST) return;
         // Ha a Google ablak adatot adott vissza (siker vagy hibakód), azt feldolgozzuk; adat nélkül a felhasználó bezárta
         if (data == null) { notifyAuth(false, "", "", resultCode == RESULT_CANCELED ? "CANCELED" : "RESULT_" + resultCode); return; }
