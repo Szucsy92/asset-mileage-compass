@@ -2,7 +2,8 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ChevronDown, Plus, Trash2, AlertTriangle, X, Lock, CalendarPlus, FileSpreadsheet, ArrowUp, FileUp, Download, LogOut, LogIn } from "lucide-react";
-import { getAccessToken, isSignedIn, signOut, signedInEmail } from "@/lib/googleAuth";
+import { isSignedIn, refreshProfile, signOut, signedInEmail } from "@/lib/googleAuth";
+import { AccountPanel } from "@/components/AccountPanel";
 import type { WorkbookRef } from "@/lib/workbookLayout";
 import { WheelPicker } from "@/components/WheelPicker";
 import { Button } from "@/components/ui/button";
@@ -99,6 +100,7 @@ function Index() {
   }, [xlsOpen]);
   const [excelBusy, setExcelBusy] = useState(false);
   const [signedIn, setSignedIn] = useState(false);
+  const [accountOpen, setAccountOpen] = useState(false);
   const [driveSync, setDriveSync] = useState<{ state: "idle" | "saving" | "ok" | "error"; msg?: string }>({ state: "idle" });
   const [yearFile, setYearFile] = useState<{ year: number; ref: WorkbookRef } | null>(null);
   const [fileState, setFileState] = useState<{ state: "idle" | "searching" | "loading" | "missing" | "error"; msg?: string }>({ state: "idle" });
@@ -200,7 +202,6 @@ function Index() {
     try { await fn(); } catch (error) { alert(error instanceof Error ? error.message : "A művelet nem sikerült."); }
     finally { setExcelBusy(false); if (label) setNote((n) => (n === label ? "" : n)); setSignedIn(isSignedIn()); }
   };
-  const signInNow = () => guarded(async () => { await getAccessToken(); });
   /** Letöltés: az app adataival kitöltött táblázat fizikai mentése a telefon Letöltések mappájába */
   const downloadFileNow = () => guarded(async () => {
     if (year == null) return;
@@ -260,6 +261,8 @@ function Index() {
     : fileState.state === "error" ? (offline ? "" : "Drive hiba") : driveSync.state === "error" ? "Drive: szinkron vár" : "";
 
   useEffect(() => { setMonth(new Date().getMonth()); }, []);
+  // A bejelentkezett fiók neve és profilképe a fiókválasztó panelhez (csendben, a háttérben)
+  useEffect(() => { if (signedIn) void refreshProfile(); }, [signedIn]);
   /** Az adott hónapban még létező eszközök (a törölt eszköz a törlés hónapjától nem látszik) */
   const shown = devices.filter((d) => d.removedFrom == null || month < d.removedFrom);
   useEffect(() => {
@@ -322,7 +325,7 @@ function Index() {
                       <LogOut className="size-4" /><span className="truncate">Kijelentkezés ({signedInEmail() ?? "Google"})</span>
                     </Button>
                   ) : (
-                    <Button role="menuitem" variant="ghost" className="h-auto w-full justify-start px-2 py-2 text-xs" onClick={() => void signInNow()}>
+                    <Button role="menuitem" variant="ghost" className="h-auto w-full justify-start px-2 py-2 text-xs" onClick={() => { setXlsOpen(false); setAccountOpen(true); }}>
                       <LogIn className="size-4" />Bejelentkezés
                     </Button>
                   )}
@@ -385,6 +388,7 @@ function Index() {
       {picker === "month" && (
         <WheelPicker items={MONTHS} value={month} onSelect={(i) => { setMonth(i); setPicker(null); }} onClose={() => setPicker(null)} />
       )}
+      {accountOpen && <AccountPanel onClose={() => setAccountOpen(false)} onDone={() => setSignedIn(isSignedIn())} />}
       {adding && <AddDialog onClose={() => setAdding(false)} onAdd={(d) => { setDevId(actions.add(d)); setAdding(false); }} />}
             </main>
   );
