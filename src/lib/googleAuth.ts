@@ -95,14 +95,18 @@ type NativeGoogle = { authorize: (interactive: boolean, account: string) => void
 const nativeGoogle = () => (window as unknown as { GoogleAuth?: NativeGoogle }).GoogleAuth;
 
 /** Belső bejelentkezés (a Google Play-szolgáltatások ablaka az app fölött, böngésző nélkül). Hibakódok: CANCELED, UI_REQUIRED, egyéb. */
+let cancelNative: (() => void) | null = null;
+/** Folyamatban lévő bejelentkezés megszakítása (a következő próbálkozás tiszta lappal indul, nem ragad be) */
+export function cancelSignIn() { cancelNative?.(); cancelNative = null; pending = null; wanted = ""; }
 function nativeAuthorize(interactive: boolean, account = ""): Promise<Tokens> {
   const bridge = nativeGoogle();
   if (!bridge) return Promise.reject(new Error("NO_BRIDGE"));
   const w = window as unknown as { __onGoogleAuth?: ((ok: boolean, access: string, email: string, err: string) => void) | undefined };
   return new Promise<Tokens>((resolve, reject) => {
-    const timer = setTimeout(() => { w.__onGoogleAuth = undefined; reject(new Error("TIMEOUT")); }, 120_000);
+    const timer = setTimeout(() => { w.__onGoogleAuth = undefined; cancelNative = null; reject(new Error("TIMEOUT")); }, 120_000);
+    cancelNative = () => { clearTimeout(timer); w.__onGoogleAuth = undefined; reject(new Error("USER_CANCEL")); };
     w.__onGoogleAuth = (ok, access, email, err) => {
-      clearTimeout(timer); w.__onGoogleAuth = undefined;
+      clearTimeout(timer); w.__onGoogleAuth = undefined; cancelNative = null;
       if (ok && access) resolve({ access, expires: Date.now() + 55 * 60_000, ...(email ? { email } : {}) });
       else reject(new Error(err || "ERROR"));
     };
@@ -113,6 +117,8 @@ function nativeAuthorize(interactive: boolean, account = ""): Promise<Tokens> {
 async function nativeSignIn(): Promise<Tokens> {
   if (nativeGoogle()) {
     try { return await nativeAuthorize(true, wanted); } catch (e) {
+      if (e instanceof Error && e.message === "USER_CANCEL") throw new Error("A bejelentkezést megszakítottad.");
+      if (e instanceof Error && e.message === "TIMEOUT") throw new Error("A bejelentkezés időtúllépés miatt megszakadt. Próbáld újra.");
       // Bezárt vagy elbukott belső ablak: nem hagyjuk zsákutcában, felkínáljuk a böngészős bejelentkezést
       if (e instanceof Error && e.message === "CANCELED" && !confirm("A belső bejelentkezés megszakadt. Megpróbáljam böngészős ablakban?")) throw new Error("A bejelentkezést megszakítottad.");
       // Egyéb hiba (pl. nincs Play-szolgáltatás): tartalékként a böngészős bejelentkezés
