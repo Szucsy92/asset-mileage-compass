@@ -30,7 +30,6 @@ import androidx.core.view.WindowInsetsControllerCompat;
 import com.getcapacitor.BridgeActivity;
 import com.google.android.gms.auth.api.identity.AuthorizationRequest;
 import com.google.android.gms.auth.api.identity.AuthorizationResult;
-import com.google.android.gms.auth.api.identity.ClearTokenRequest;
 import com.google.android.gms.auth.api.identity.Identity;
 import com.google.android.gms.auth.api.signin.GoogleSignInAccount;
 import com.google.android.gms.common.Scopes;
@@ -244,14 +243,6 @@ public class MainActivity extends BridgeActivity {
             runOnUiThread(() -> {
                 if (interactive && (account == null || account.isEmpty())) chooseAccount();
                 else startAuthorization(interactive, account);
-            });
-        }
-        /** Kijelentkezés: a Google által tárolt hozzáférési token törlése, hogy a következő belépés újra fiókot kérjen. */
-        @JavascriptInterface public void signOut(final String token) {
-            if (token == null || token.isEmpty()) return;
-            runOnUiThread(() -> {
-                try { Identity.getAuthorizationClient(MainActivity.this).clearToken(ClearTokenRequest.builder().setToken(token).build()); }
-                catch (Exception ignored) { }
             });
         }
     }
