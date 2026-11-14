@@ -37,12 +37,7 @@ function write(t: Tokens | null) { try { if (t) localStorage.setItem(STORE, JSON
 
 export const signedInEmail = () => read()?.email ?? null;
 export const isSignedIn = () => !!read();
-export function signOut() {
-  const t = read();
-  // Belső bejelentkezésnél a Google tárolt tokenjét is töröljük, hogy a következő belépés újra fiókot kérjen
-  try { if (t?.access) nativeGoogle()?.signOut?.(t.access); } catch { /* nem kritikus */ }
-  write(null);
-}
+export function signOut() { write(null); }
 /** Lejárt/érvénytelen hozzáférési token eldobása (a frissítő token megmarad) */
 export function dropAccessToken() { const t = read(); if (t) write({ ...t, expires: 0 }); }
 
@@ -66,7 +61,7 @@ async function tokenRequest(body: Record<string, string>): Promise<TokenResponse
   return (await res.json()) as TokenResponse;
 }
 
-type NativeGoogle = { authorize: (interactive: boolean, account: string) => void; signOut?: (token: string) => void };
+type NativeGoogle = { authorize: (interactive: boolean, account: string) => void };
 const nativeGoogle = () => (window as unknown as { GoogleAuth?: NativeGoogle }).GoogleAuth;
 
 /** Belső bejelentkezés (a Google Play-szolgáltatások ablaka az app fölött, böngésző nélkül). Hibakódok: CANCELED, UI_REQUIRED, egyéb. */
