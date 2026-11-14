@@ -35,6 +35,35 @@ export const driveSetupMessage = () =>
 function read(): Tokens | null { try { const r = localStorage.getItem(STORE); return r ? (JSON.parse(r) as Tokens) : null; } catch { return null; } }
 function write(t: Tokens | null) { try { if (t) localStorage.setItem(STORE, JSON.stringify(t)); else localStorage.removeItem(STORE); } catch { /* tele a tár */ } }
 
+export type KnownAccount = { email: string; name?: string; photo?: string };
+const KNOWN = "gdrive-known-accounts-v1";
+/** A ezen a telefonon már használt fiókok (név, profilkép), a legutóbbi elöl */
+export function knownAccounts(): KnownAccount[] { try { const r = JSON.parse(localStorage.getItem(KNOWN) ?? "[]") as unknown; return Array.isArray(r) ? (r as KnownAccount[]) : []; } catch { return []; } }
+function saveKnown(list: KnownAccount[]) { try { localStorage.setItem(KNOWN, JSON.stringify(list)); } catch { /* tele a tár */ } }
+export function forgetAccount(email: string) { saveKnown(knownAccounts().filter((a) => a.email.toLowerCase() !== email.toLowerCase())); }
+/** A bejelentkezett fiók neve és profilképe a Drive-ból; a fiók bekerül az ismertek közé (nem kritikus, hibánál csendben marad) */
+async function rememberProfile(access: string, fallbackEmail?: string) {
+  let found: KnownAccount | null = null;
+  try {
+    const res = await fetch("https://www.googleapis.com/drive/v3/about?fields=user(displayName,emailAddress,photoLink)", { headers: { Authorization: `Bearer ${access}` } });
+    if (res.ok) {
+      const u = ((await res.json()) as { user?: { displayName?: string; emailAddress?: string; photoLink?: string } }).user;
+      if (u?.emailAddress) found = { email: u.emailAddress, ...(u.displayName ? { name: u.displayName } : {}), ...(u.photoLink ? { photo: u.photoLink } : {}) };
+    }
+  } catch { /* nincs hálózat */ }
+  const email = found?.email ?? fallbackEmail;
+  if (!email) return;
+  saveKnown([found ?? { email }, ...knownAccounts().filter((a) => a.email.toLowerCase() !== email.toLowerCase())]);
+  const t = read();
+  if (t && !t.email) write({ ...t, email });
+}
+/** Már bejelentkezett fióknál a név/profilkép pótlása (hogy kijelentkezés után is megjelenjen a fiók a listában) */
+export async function refreshProfile() {
+  const t = read();
+  if (!t) return;
+  try { await rememberProfile(await getAccessToken(false), t.email); } catch { /* nem kritikus */ }
+}
+
 export const signedInEmail = () => read()?.email ?? null;
 export const isSignedIn = () => !!read();
 export function signOut() { write(null); }
@@ -61,6 +90,7 @@ async function tokenRequest(body: Record<string, string>): Promise<TokenResponse
   return (await res.json()) as TokenResponse;
 }
 
+let wanted = ""; // a bejelentkezéskor kiválasztott fiók e-mail címe (üres: a telefon fiókválasztója)
 type NativeGoogle = { authorize: (interactive: boolean, account: string) => void };
 const nativeGoogle = () => (window as unknown as { GoogleAuth?: NativeGoogle }).GoogleAuth;
 
@@ -82,7 +112,7 @@ function nativeAuthorize(interactive: boolean, account = ""): Promise<Tokens> {
 
 async function nativeSignIn(): Promise<Tokens> {
   if (nativeGoogle()) {
-    try { return await nativeAuthorize(true); } catch (e) {
+    try { return await nativeAuthorize(true, wanted); } catch (e) {
       // Bezárt vagy elbukott belső ablak: nem hagyjuk zsákutcában, felkínáljuk a böngészős bejelentkezést
       if (e instanceof Error && e.message === "CANCELED" && !confirm("A belső bejelentkezés megszakadt. Megpróbáljam böngészős ablakban?")) throw new Error("A bejelentkezést megszakítottad.");
       // Egyéb hiba (pl. nincs Play-szolgáltatás): tartalékként a böngészős bejelentkezés
@@ -96,6 +126,7 @@ async function nativeSignIn(): Promise<Tokens> {
   const url = "https://accounts.google.com/o/oauth2/v2/auth?" + new URLSearchParams({
     client_id: CLIENT_ID, redirect_uri: REDIRECT, response_type: "code", scope: SCOPE, state,
     code_challenge: challenge, code_challenge_method: "S256", access_type: "offline", prompt: "consent",
+    ...(wanted ? { login_hint: wanted } : {}),
   }).toString();
 
   const code = await new Promise<string>((resolve, reject) => {
@@ -170,8 +201,15 @@ export function getAccessToken(interactive = true): Promise<string> {
       if (!interactive) throw new Error("Nincs bejelentkezve a Google-fiókba.");
       const fresh = isNative() ? await nativeSignIn() : await webSignIn();
       write({ ...fresh, ...(fresh.refresh || !t?.refresh ? {} : { refresh: t.refresh }) });
+      void rememberProfile(fresh.access, fresh.email ?? (wanted || undefined));
       return fresh.access;
     } finally { pending = null; }
   })();
   return pending;
+}
+
+/** Bejelentkezés a megadott fiókkal (e-mail nélkül: a telefon fiókválasztója nyílik meg) */
+export function signInAccount(email?: string): Promise<string> {
+  wanted = email ?? "";
+  return getAccessToken(true);
 }
