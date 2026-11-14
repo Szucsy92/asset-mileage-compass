@@ -36,7 +36,7 @@ export function AccountPanel({ onClose, onDone }: { onClose: () => void; onDone:
           <h2 className="text-lg font-bold">Bejelentkezés Google-fiókkal</h2>
           <button aria-label="Bezárás" disabled={!!busy} onClick={onClose} className="rounded-full p-1.5 text-muted-foreground hover:bg-muted disabled:opacity-50"><X className="size-5" /></button>
         </div>
-        <p className="mb-3 text-xs text-muted-foreground">A Drive-táblázat eléréséhez válaszd ki a fiókot.</p>
+        <p className="mb-3 text-xs text-muted-foreground">{accounts.length ? "A Drive-táblázat eléréséhez válaszd ki a fiókot." : "Az Android nem adja ki az appoknak a fiókok listáját, ezért az első belépéskor a Google fiókválasztója nyílik meg. Utána a használt fiókok itt jelennek meg profilképpel."}</p>
         <ul className="space-y-1.5">
           {accounts.map((a) => (
             <li key={a.email} className="flex items-center gap-1">
