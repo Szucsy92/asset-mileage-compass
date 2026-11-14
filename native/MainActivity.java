@@ -253,15 +253,31 @@ public class MainActivity extends BridgeActivity {
         runOnUiThread(() -> getBridge().getWebView().evaluateJavascript(js, null));
     }
 
-    /** Fiókválasztó (a telefonon lévő Google-fiókok); minden bejelentkezésnél megjelenik. */
+    /**
+     * Fiókválasztó a telefonon lévő Google-fiókokból. A Google saját választója nyílik meg (profilképekkel);
+     * ha az nem érhető el, a rendszer általános fiókválasztója. A listát az Android az appoknak nem adja ki,
+     * ezért a választás eredménye (az e-mail cím) kerül vissza.
+     */
     private void chooseAccount() {
+        Intent chooser = null;
         try {
-            Intent chooser = Build.VERSION.SDK_INT >= 26
-                ? AccountManager.newChooseAccountIntent(null, null, new String[]{"com.google"}, null, null, null, null)
-                : AccountManager.newChooseAccountIntent(null, null, new String[]{"com.google"}, false, null, null, null, null);
+            Class<?> optionsClass = Class.forName("com.google.android.gms.common.AccountPicker$AccountChooserOptions");
+            Class<?> builderClass = Class.forName("com.google.android.gms.common.AccountPicker$AccountChooserOptions$Builder");
+            Object builder = builderClass.getDeclaredConstructor().newInstance();
+            builderClass.getMethod("setAllowableAccountsTypes", java.util.List.class).invoke(builder, Arrays.asList("com.google"));
+            Object options = builderClass.getMethod("build").invoke(builder);
+            chooser = (Intent) Class.forName("com.google.android.gms.common.AccountPicker")
+                .getMethod("newChooseAccountIntent", optionsClass).invoke(null, options);
+        } catch (Throwable ignored) { chooser = null; }
+        try {
+            if (chooser == null) {
+                chooser = Build.VERSION.SDK_INT >= 26
+                    ? AccountManager.newChooseAccountIntent(null, null, new String[]{"com.google"}, null, null, null, null)
+                    : AccountManager.newChooseAccountIntent(null, null, new String[]{"com.google"}, false, null, null, null, null);
+            }
             startActivityForResult(chooser, CHOOSE_ACCOUNT_REQUEST);
         } catch (Exception e) {
-            startAuthorization(true, ""); // tartalék: a Google saját választója
+            startAuthorization(true, ""); // tartalék: a Google engedélykérő ablaka
         }
     }
 
