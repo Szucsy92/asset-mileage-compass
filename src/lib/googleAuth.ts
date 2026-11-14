@@ -66,7 +66,10 @@ export async function refreshProfile() {
 
 export const signedInEmail = () => read()?.email ?? null;
 export const isSignedIn = () => !!read();
-export function signOut() { write(null); }
+export function signOut() {
+  write(null);
+  cancelSignIn(); // a folyamatban lévő kísérlet és a megjegyzett eredmény is törlődik, így az újabb bejelentkezés tiszta lappal indul
+}
 /** Lejárt/érvénytelen hozzáférési token eldobása (a frissítő token megmarad) */
 export function dropAccessToken() { const t = read(); if (t) write({ ...t, expires: 0 }); }
 
@@ -184,8 +187,12 @@ let pending: Promise<string> | null = null;
 /** Érvényes hozzáférési token: lejáratkor frissít, szükség esetén bejelentkezteti a felhasználót */
 export function getAccessToken(interactive = true): Promise<string> {
   if (!driveConfigured()) return Promise.reject(new Error(driveSetupMessage()));
-  pending ??= (async () => {
-    try {
+  // Érvényes token: azonnali válasz, a közös „folyamatban lévő” kísérletbe nem kerül bele
+  const cached = read();
+  if (cached && cached.expires > Date.now()) return Promise.resolve(cached.access);
+  if (!pending) {
+    const run = (async () => {
+    {
       const t = read();
       if (t && t.expires > Date.now()) return t.access;
       if (t?.refresh && isNative()) {
@@ -209,8 +216,13 @@ export function getAccessToken(interactive = true): Promise<string> {
       write({ ...fresh, ...(fresh.refresh || !t?.refresh ? {} : { refresh: t.refresh }) });
       void rememberProfile(fresh.access, fresh.email ?? (wanted || undefined));
       return fresh.access;
-    } finally { pending = null; }
-  })();
+    }
+    })();
+    pending = run;
+    // Az eredmény után töröljük, de csak ha közben nem indult új kísérlet (a törlés nem futhat a hozzárendelés előtt)
+    const clear = () => { if (pending === run) pending = null; };
+    run.then(clear, clear);
+  }
   return pending;
 }
 
