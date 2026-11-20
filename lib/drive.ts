@@ -1,0 +1,85 @@
+import { dropAccessToken, getAccessToken } from "./googleAuth";
+
+export const XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+/** Alapértelmezett közös Drive-mappa (a kereső először ebben keres) */
+export const DEFAULT_FOLDER_ID = "1K-rLEReFb1CDvBI9542WzT0cJ5Km2Hil";
+export type DriveFile = { id: string; name: string; modifiedTime: string; owner: string; canEdit: boolean };
+
+type ApiFile = { id: string; name: string; modifiedTime: string; ownedByMe?: boolean; owners?: { displayName?: string }[]; capabilities?: { canEdit?: boolean } };
+const API = "https://www.googleapis.com/drive/v3";
+const FIELDS = "id,name,modifiedTime,ownedByMe,owners(displayName),capabilities(canEdit)";
+const toFile = (f: ApiFile): DriveFile => ({
+  id: f.id, name: f.name, modifiedTime: f.modifiedTime,
+  owner: f.ownedByMe ? "te" : (f.owners?.[0]?.displayName ?? ""), canEdit: f.capabilities?.canEdit ?? false,
+});
+
+async function explain(res: Response): Promise<string> {
+  if (res.status === 403) return "Nincs jogosultságod ehhez a Drive-fájlhoz (szerkesztői hozzáférés kell).";
+  if (res.status === 404) return "A Drive-fájl nem található, vagy nincs megosztva veled.";
+  if (res.status === 401) return "A Google-bejelentkezés lejárt, jelentkezz be újra.";
+  return `Drive hiba (${res.status}).`;
+}
+
+export type DriveOpts = { silent?: boolean };
+async function call(url: string, init: RequestInit = {}, o: DriveOpts & { retried?: boolean } = {}): Promise<Response> {
+  const token = await getAccessToken(!o.silent);
+  const headers = new Headers(init.headers);
+  headers.set("Authorization", `Bearer ${token}`);
+  const res = await fetch(url, { ...init, headers });
+  if (res.status === 401 && !o.retried) { dropAccessToken(); return call(url, init, { ...o, retried: true }); }
+  if (!res.ok) throw new Error(await explain(res));
+  return res;
+}
+
+/** .xlsx fájlok keresése a Drive-on (saját és megosztott), legújabb elöl */
+export async function searchXlsx(term: string, folderId: string | null = DEFAULT_FOLDER_ID, o: DriveOpts = {}): Promise<DriveFile[]> {
+  const t = term.trim().replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+  const q = `mimeType='${XLSX_MIME}' and trashed=false${folderId ? ` and '${folderId}' in parents` : ""}${t ? ` and name contains '${t}'` : ""}`;
+  const params = new URLSearchParams({ q, orderBy: "modifiedTime desc", pageSize: "100", fields: `files(${FIELDS})`, supportsAllDrives: "true", includeItemsFromAllDrives: "true" });
+  const data = (await (await call(`${API}/files?${params.toString()}`, {}, o)).json()) as { files?: ApiFile[] };
+  return (data.files ?? []).map(toFile);
+}
+
+export async function getFileMeta(id: string, o: DriveOpts = {}): Promise<DriveFile> {
+  const res = await call(`${API}/files/${encodeURIComponent(id)}?fields=${encodeURIComponent(FIELDS)}&supportsAllDrives=true`, {}, o);
+  return toFile((await res.json()) as ApiFile);
+}
+
+export async function downloadFile(id: string, o: DriveOpts = {}): Promise<{ blob: Blob; meta: DriveFile }> {
+  const meta = await getFileMeta(id, o);
+  const res = await call(`${API}/files/${encodeURIComponent(id)}?alt=media&supportsAllDrives=true`, {}, o);
+  return { blob: await res.blob(), meta };
+}
+
+/** A fájl tartalmának cseréje (ugyanaz a fájl és megosztás marad). Visszaadja az új módosítási időt. */
+export async function uploadFile(id: string, blob: Blob, o: DriveOpts = {}): Promise<string> {
+  const res = await call(
+    `https://www.googleapis.com/upload/drive/v3/files/${encodeURIComponent(id)}?uploadType=media&supportsAllDrives=true&fields=modifiedTime`,
+    { method: "PATCH", headers: { "Content-Type": XLSX_MIME }, body: blob },
+    o,
+  );
+  return ((await res.json()) as { modifiedTime: string }).modifiedTime;
+}
+
+/** A fájl másolata a közös mappában (új év táblázatához) */
+export async function copyFile(id: string, name: string, o: DriveOpts = {}): Promise<DriveFile> {
+  const res = await call(
+    `${API}/files/${encodeURIComponent(id)}/copy?supportsAllDrives=true&fields=${encodeURIComponent(FIELDS)}`,
+    { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, parents: [DEFAULT_FOLDER_ID] }) },
+    o,
+  );
+  return toFile((await res.json()) as ApiFile);
+}
+
+/** Új táblázat létrehozása a közös mappában (új év) */
+export async function createFile(name: string, blob: Blob, o: DriveOpts = {}): Promise<DriveFile> {
+  const boundary = `xlsx${Math.random().toString(36).slice(2)}`;
+  const meta = JSON.stringify({ name, parents: [DEFAULT_FOLDER_ID], mimeType: XLSX_MIME });
+  const body = new Blob([`--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${meta}\r\n--${boundary}\r\nContent-Type: ${XLSX_MIME}\r\n\r\n`, blob, `\r\n--${boundary}--`]);
+  const res = await call(
+    `https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true&fields=${encodeURIComponent(FIELDS)}`,
+    { method: "POST", headers: { "Content-Type": `multipart/related; boundary=${boundary}` }, body },
+    o,
+  );
+  return toFile((await res.json()) as ApiFile);
+}
